@@ -1,3 +1,21 @@
+Metadata-Version: 2.1
+Name: pyepmap
+Version: 1.0.2
+Summary: pyepmap provides methods for importing EP studies from commercial Clinical Mapping Systems and to export data to openCARP compatible data formats.
+Home-page: https://github.com/me/myproject
+Author: Robert Arnold
+Author-email: robert.arnold@medunigraz.at
+License: lgpl-3.0
+Classifier: License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Development Status :: 4 - Beta
+Requires-Python: >=3.6.0
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+
+
 # pyEPmap
 
 pyEPmap provides an interface to import, visualize and translate clinical mapping data.

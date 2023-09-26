@@ -1,0 +1,2 @@
+include README.md LICENSE.txt requirements.txt
+include pyepmap/visualize/colormaps.json
