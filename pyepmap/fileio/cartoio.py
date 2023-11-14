@@ -377,26 +377,26 @@ class CartoStudy(EPStudy):
         if not q_sites_data.size > 0:
             log.info('no ablation sites found in Sites_QMODE+.txt')
         else:
-            for site in sites_data:
+            for site in q_sites_data:
                 sites.append(
                     VisitagAblationSite(
-                        int(site[sites_hdr.index('SiteIndex')]),
-                        session_index=int(site[sites_hdr.index('Session')]),
-                        channel_id=int(site[sites_hdr.index('ChannelID')]),
-                        tag_index_status=int(site[sites_hdr.index('TagIndexStatus')]),
-                        coordinates=[site[sites_hdr.index('X')],
-                                     site[sites_hdr.index('Y')],
-                                     site[sites_hdr.index('Z')]],
-                        avg_force=site[sites_hdr.index('AverageForce')],
-                        fti=site[sites_hdr.index('FTI')],
-                        max_power=site[sites_hdr.index('MaxPower')],
-                        max_temp=site[sites_hdr.index('MaxTemperature')],
-                        duration=site[sites_hdr.index('DurationTime')],
-                        base_impedance=site[sites_hdr.index('BaseImpedance')],
-                        impedance_drop=site[sites_hdr.index('ImpedanceDrop')],
+                        int(site[q_sites_hdr.index('SiteIndex')]),
+                        session_index=int(site[q_sites_hdr.index('Session')]),
+                        channel_id=int(site[q_sites_hdr.index('ChannelID')]),
+                        tag_index_status=int(site[q_sites_hdr.index('TagIndexStatus')]),
+                        coordinates=[site[q_sites_hdr.index('X')],
+                                     site[q_sites_hdr.index('Y')],
+                                     site[q_sites_hdr.index('Z')]],
+                        avg_force=site[q_sites_hdr.index('AverageForce')],
+                        fti=site[q_sites_hdr.index('FTI')],
+                        max_power=site[q_sites_hdr.index('MaxPower')],
+                        max_temp=site[q_sites_hdr.index('MaxTemperature')],
+                        duration=site[q_sites_hdr.index('DurationTime')],
+                        base_impedance=site[q_sites_hdr.index('BaseImpedance')],
+                        impedance_drop=site[q_sites_hdr.index('ImpedanceDrop')],
                         rf_index=VisitagRFIndex(
                             name='VisitagFTI',
-                            value=site[sites_hdr.index('FTI')]
+                            value=site[q_sites_hdr.index('FTI')]
                         )
                     )
                 )
