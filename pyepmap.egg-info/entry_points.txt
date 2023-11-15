@@ -1,2 +1,0 @@
-[console_scripts]
-pyepmap = pyepmap.cli:run
