@@ -5,3 +5,4 @@ pyepmap/__pycache__/
 pyepmap/datatypes/__pycache__/
 pyepmap/fileio/__pycache__/
 pyepmap/visualize/__pycache__/
+*.log
