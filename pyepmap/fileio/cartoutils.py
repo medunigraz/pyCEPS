@@ -1042,23 +1042,6 @@ def read_visitag_file(file, encoding='cp1252'):
     log = logging.getLogger('{}.read_visitag_file'.format(__name__))
     log.debug('reading visitag file {}'.format(file))
 
-    # define data order
-    ORDER = ['SiteIndex',
-             'Session',
-             'ChannelID',
-             'TagIndexStatus',
-             'X',
-             'Y',
-             'Z',
-             'DurationTime',
-             'AverageForce',
-             'MaxTemperature',
-             'MaxPower',
-             'BaseImpedance',
-             'ImpedanceDrop',
-             'FTI',
-             'RFIndex']
-
     if not carto_isfile(file):
         log.info('VisiTags file {} not found'.format(file))
         return np.array([], dtype=float, ndmin=2), list()
@@ -1070,31 +1053,18 @@ def read_visitag_file(file, encoding='cp1252'):
             # file is empty!
             return np.array([], dtype=float, ndmin=2), []
 
-    # locate significant data
-    try:
-        cols = get_col_idx_from_header(col_headers, ORDER)
-        col_headers = [col_headers[i] for i in cols]
-    except ValueError as err:
-        log.warning('Unable to load Visitag data: {}'.format(err))
-        return np.array([], dtype=float, ndmin=2), []
-
-    # sanity check, just in case
-    if col_headers != ORDER:
-        log.warning('requested column order does not match retrieved order!')
-        return np.array([], dtype=float, ndmin=2), []
-
     # read data
     if isinstance(file, zipfile.Path):
         data = np.loadtxt(file.open(),
                           dtype=float,
                           skiprows=1,
                           ndmin=2,
-                          usecols=cols)
+                          )
     else:
         data = np.loadtxt(file,
                           dtype=float,
                           skiprows=1,
                           ndmin=2,
-                          usecols=cols)
+                          )
 
-    return data, ORDER
+    return data, col_headers

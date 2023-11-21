@@ -383,7 +383,6 @@ class CartoStudy(EPStudy):
                         int(site[q_sites_hdr.index('SiteIndex')]),
                         session_index=int(site[q_sites_hdr.index('Session')]),
                         channel_id=int(site[q_sites_hdr.index('ChannelID')]),
-                        tag_index_status=int(site[q_sites_hdr.index('TagIndexStatus')]),
                         coordinates=[site[q_sites_hdr.index('X')],
                                      site[q_sites_hdr.index('Y')],
                                      site[q_sites_hdr.index('Z')]],
