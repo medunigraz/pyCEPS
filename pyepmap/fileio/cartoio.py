@@ -868,6 +868,8 @@ class CartoStudy(EPStudy):
 
         if not study_xml:
             # study xml not found, try subdirectories
+            if search_path.endswith('.zip'):
+                search_path = zipfile.Path(search_path)
             if isinstance(search_path, zipfile.Path):
                 folders = [f.name for f in search_path.iterdir()
                            if f.is_dir()
