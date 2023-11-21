@@ -1797,12 +1797,22 @@ class CartoPoint(EPPoint):
 
         self.ecgFile = root.find('ECG').get('FileName')
 
+        # determine ECG file version
+
         # get egm names
         if not egm_names_from_pos:
             ecg_file_header = read_ecg_file_header(
                 join_carto_path(self.parent.parent.studyRoot, self.ecgFile),
                 encoding=self.parent.parent.encoding
             )
+            if ecg_file_header['version'] == '4.1':
+                # channel names are given in pointFile for version 4.1+
+                ecg_file_header['name_bip'] = root.find('ECG').get(
+                    'BipolarMappingChannel')
+                ecg_file_header['name_uni'] = root.find('ECG').get(
+                    'UnipolarMappingChannel')
+                ecg_file_header['name_ref'] = root.find('ECG').get(
+                    'ReferenceChannel')
             egm_names = channel_names_from_ecg_header(ecg_file_header)
         else:
             egm_names = channel_names_from_pos_file(

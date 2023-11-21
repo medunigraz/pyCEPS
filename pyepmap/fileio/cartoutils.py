@@ -440,11 +440,14 @@ def read_ecg_file_header(file, encoding='cp1252'):
                 number of header lines
     """
 
+    SUPPORTED_VERSIONS = ['ecg_export_4.0', 'ecg_export_4.1']
+
     # create child logger
     log = logging.getLogger('{}.read_ecg_file_header'.format(__name__))
     log.debug('reading ecg file header in {}'.format(file))
 
-    file_header = {'gain': np.nan,
+    file_header = {'version': '',
+                   'gain': np.nan,
                    'name_bip': '',
                    'name_uni': '',
                    'name_ref': '',
@@ -459,9 +462,10 @@ def read_ecg_file_header(file, encoding='cp1252'):
     with open_carto_file(file, mode='rb') as f:
         # read file version
         version = f.readline().decode(encoding=encoding).rstrip()
-        if not version.lower() == 'ecg_export_4.0':
+        if not version.lower() in SUPPORTED_VERSIONS:
             log.info('version in file {} is not supported'.format(file))
             return file_header
+        file_header['version'] = version.split('_')[-1]
         file_header['header_lines'] = file_header['header_lines'] + 1
 
         # read gain
@@ -475,33 +479,35 @@ def read_ecg_file_header(file, encoding='cp1252'):
                         .format(file_header['gain'], file))
 
         # read mapping channels
-        line = f.readline().decode(encoding=encoding).rstrip()
-        if not line.lower().startswith('unipolar'):
-            log.warning('unexpected header line (3) in {}, trying next line'
-                        .format(file))
+        if file_header['version'] == '4.0':
+            # channel names are included up to version 4.0
             line = f.readline().decode(encoding=encoding).rstrip()
             if not line.lower().startswith('unipolar'):
-                log.info('unexpected file header in {}'.format(file))
-                return file_header
+                log.warning('unexpected header line (3) in {}, trying next'
+                            .format(file))
+                line = f.readline().decode(encoding=encoding).rstrip()
+                if not line.lower().startswith('unipolar'):
+                    log.info('unexpected file header in {}'.format(file))
+                    return file_header
+                file_header['header_lines'] = file_header['header_lines'] + 1
             file_header['header_lines'] = file_header['header_lines'] + 1
-        file_header['header_lines'] = file_header['header_lines'] + 1
 
-        uni_token = 'unipolar mapping channel='
-        bip_token = 'bipolar mapping channel='
-        ref_token = 'reference channel='
+            uni_token = 'unipolar mapping channel='
+            bip_token = 'bipolar mapping channel='
+            ref_token = 'reference channel='
 
-        str_start = line.lower().find(uni_token) + len(uni_token)
-        str_end = line.lower().find(bip_token)
-        file_header['name_uni'] = line[str_start:str_end].strip()
+            str_start = line.lower().find(uni_token) + len(uni_token)
+            str_end = line.lower().find(bip_token)
+            file_header['name_uni'] = line[str_start:str_end].strip()
 
-        str_start = line.lower().find(bip_token) + len(bip_token)
-        str_end = line.lower().find(ref_token)
-        file_header['name_bip'] = line[str_start:str_end].strip()
+            str_start = line.lower().find(bip_token) + len(bip_token)
+            str_end = line.lower().find(ref_token)
+            file_header['name_bip'] = line[str_start:str_end].strip()
 
-        str_start = line.lower().find(ref_token) + len(ref_token)
-        file_header['name_ref'] = line[line.lower().find(ref_token)
-                                       + len(ref_token):].split()[0].strip()
-        # TODO: compare this to MATLAB version, i.e. uni2 name??
+            str_start = line.lower().find(ref_token) + len(ref_token)
+            file_header['name_ref'] = line[line.lower().find(ref_token)
+                                           + len(ref_token):].split()[0].strip()
+            # TODO: compare this to MATLAB version, i.e. uni2 name??
 
         # read column names
         line = f.readline().decode(encoding=encoding).rstrip()
