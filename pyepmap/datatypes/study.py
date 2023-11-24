@@ -10,6 +10,7 @@ import gzip
 import pickle
 import webbrowser
 
+from pyepmap.fileio.pathtools import Repository
 from pyepmap.datatypes.surface import SurfaceSignalMap
 from pyepmap.fileio import FileWriter
 from pyepmap.interpolation import (inverse_distance_weighting,
@@ -114,20 +115,14 @@ class EPStudy:
             raise TypeError('Unknown EAM system {}!'
                             'Choose from: {}'
                             .format(system, self.EAM_SYSTEMS))
-        if not isinstance(study_repo, str):
-            raise TypeError('path to study repository must be of type string'
-                            'not {}'
-                            .format(type(study_repo)))
-        if not os.path.exists(study_repo):
-            raise FileExistsError('Study repository {} does not exist!'
-                                  .format(study_repo))
 
         self.system = system
-        self.repository = os.path.abspath(study_repo)
+        # self.repository = os.path.abspath(study_repo)
+        self.repository = Repository(study_repo)
         self.pwd = pwd.encode(encoding='UTF-8')
         self.encoding = encoding
 
-        self.studyRoot = ''
+        self.studyRoot = None
 
         self.name = ''
         self.mapNames = []
@@ -266,23 +261,25 @@ class EPStudy:
         folder is created in the same folder as root.
         """
 
-        study_root = self.studyRoot
-        if isinstance(study_root, zipfile.Path):
-            # convert study root to path string
-            study_root = os.path.abspath(study_root.root.filename)
+        export_folder = self.repository.build_export_basename(folder_name)
 
-        if os.path.isfile(study_root):
-            # study root points to ZIP or PKL file, export to same directory
-            export_folder = os.path.join(os.path.dirname(study_root),
-                                         folder_name)
-        else:
-            # study root points to a folder, export to folder above
-            export_folder = os.path.join(study_root,
-                                         '../../src',
-                                         folder_name)
-
-        # this should make path platform-independent
-        export_folder = os.path.abspath(export_folder)
+        # study_root = self.studyRoot
+        # if isinstance(study_root, zipfile.Path):
+        #     # convert study root to path string
+        #     study_root = os.path.abspath(study_root.root.filename)
+        #
+        # if os.path.isfile(study_root):
+        #     # study root points to ZIP or PKL file, export to same directory
+        #     export_folder = os.path.join(os.path.dirname(study_root),
+        #                                  folder_name)
+        # else:
+        #     # study root points to a folder, export to folder above
+        #     export_folder = os.path.join(study_root,
+        #                                  '../../src',
+        #                                  folder_name)
+        #
+        # # this should make path platform-independent
+        # export_folder = os.path.abspath(export_folder)
 
         # check if export folder exists, create if necessary
         if not os.path.isdir(export_folder):
@@ -327,14 +324,18 @@ class EPStudy:
         else:
             f_loc = os.path.join(self.build_export_basename(''), self.name)
 
-        # make sure path exists, create if necessary
-        if not os.path.exists(os.path.dirname(f_loc)):
-            os.mkdir(os.path.dirname(f_loc))
-
         # handle un-pickleable attributes
-        study_root = self.studyRoot
-        if isinstance(study_root, zipfile.Path):
-            self.studyRoot = os.path.abspath(self.studyRoot.root.filename)
+        study_base = self.repository.base
+        study_root = self.repository.root
+        if isinstance(self.repository.root, zipfile.Path):
+            self.repository.root = os.path.abspath(
+                self.repository.root.filename
+            )
+        if isinstance(self.repository.base, zipfile.Path):
+            self.repository.base = os.path.abspath(
+                self.repository.base.filename
+            )
+        # TODO: handle 7z
 
         f_loc += '.gz' if gz else '.pkl'
         if os.path.isfile(f_loc):
@@ -366,7 +367,8 @@ class EPStudy:
         f.close()
 
         # restore study root
-        self.studyRoot = study_root
+        self.repository.root = study_root
+        self.repository.base = study_base
 
         log.info('saved study to {}'.format(f_loc))
 
