@@ -171,7 +171,7 @@ def get_args():
         action=OptionalListParser,
         nargs='*',
         choices=['I', 'II', 'III',
-                 'aVR', 'aVL', 'avF',
+                 'aVR', 'aVL', 'aVF',
                  'V1', 'V2', 'V3', 'V4', 'V5', 'V6'],
         help='Export ecg traces for all valid points associated '
              'with current "--map" to IGB.\n'
@@ -287,7 +287,7 @@ def load_study(args):
 
     else:
         study_pkg = os.path.abspath(args.pkl_file)
-        logger.info('loading {} study PKL'.format(args.system, study_pkg))
+        logger.info('loading {} study PKL'.format(args.system))
         # read in study from a pkl file
         # Note: both inputs are mutually exclusive
         if not study_pkg.lower().endswith(('.pkl', '.pkl.gz')):
