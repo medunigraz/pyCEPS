@@ -329,11 +329,11 @@ class EPStudy:
         study_root = self.repository.root
         if isinstance(self.repository.root, zipfile.Path):
             self.repository.root = os.path.abspath(
-                self.repository.root.filename
+                self.repository.root.root.filename
             )
         if isinstance(self.repository.base, zipfile.Path):
             self.repository.base = os.path.abspath(
-                self.repository.base.filename
+                self.repository.base.root.filename
             )
         # TODO: handle 7z
 
