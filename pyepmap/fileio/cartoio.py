@@ -339,7 +339,7 @@ class CartoStudy(EPStudy):
         # import ablation sites from Sites.txt
         file = self.repository.join(visi_dir + '/' + 'Sites.txt')
         if not self.repository.is_file(file):
-            log.warning('VisiTag Sites.txt not found'.format())
+            log.warning('VisiTag Sites.txt not found')
         else:
             with self.repository.open(file, mode='rb') as fid:
                 sites_data, sites_hdr = read_visitag_file(
@@ -375,7 +375,7 @@ class CartoStudy(EPStudy):
         # import ablation sites from QMODE+
         file = self.repository.join(visi_dir + '/' + 'Sites_QMODE+.txt')
         if not self.repository.is_file(file):
-            log.warning('VisiTag Sites_QMODE+.txt not found'.format())
+            log.warning('VisiTag Sites_QMODE+.txt not found')
         else:
             with self.repository.open(file, mode='rb') as fid:
                 q_sites_data, q_sites_hdr = read_visitag_file(
