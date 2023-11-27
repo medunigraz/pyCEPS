@@ -167,7 +167,7 @@ class Repository:
         study_root = self.base
         # convert archive paths to str
         if isinstance(study_root, zipfile.Path):
-            study_root = os.path.abspath(str(study_root.filename))
+            study_root = os.path.abspath(str(study_root.root.filename))
         if isinstance(study_root, py7zr.SevenZipFile):
             study_root = os.path.abspath(study_root.filename)
 
