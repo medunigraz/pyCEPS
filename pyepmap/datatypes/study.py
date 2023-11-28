@@ -10,6 +10,8 @@ import gzip
 import pickle
 import webbrowser
 
+import py7zr
+
 from pyepmap.fileio.pathtools import Repository
 from pyepmap.datatypes.surface import SurfaceSignalMap
 from pyepmap.fileio import FileWriter
@@ -263,24 +265,6 @@ class EPStudy:
 
         export_folder = self.repository.build_export_basename(folder_name)
 
-        # study_root = self.studyRoot
-        # if isinstance(study_root, zipfile.Path):
-        #     # convert study root to path string
-        #     study_root = os.path.abspath(study_root.root.filename)
-        #
-        # if os.path.isfile(study_root):
-        #     # study root points to ZIP or PKL file, export to same directory
-        #     export_folder = os.path.join(os.path.dirname(study_root),
-        #                                  folder_name)
-        # else:
-        #     # study root points to a folder, export to folder above
-        #     export_folder = os.path.join(study_root,
-        #                                  '../../src',
-        #                                  folder_name)
-        #
-        # # this should make path platform-independent
-        # export_folder = os.path.abspath(export_folder)
-
         # check if export folder exists, create if necessary
         if not os.path.isdir(export_folder):
             os.mkdir(export_folder)
@@ -335,7 +319,14 @@ class EPStudy:
             self.repository.base = os.path.abspath(
                 self.repository.base.root.filename
             )
-        # TODO: handle 7z
+        if isinstance(self.repository.root, py7zr.SevenZipFile):
+            self.repository.root = os.path.abspath(
+                self.repository.root.filename
+            )
+        if isinstance(self.repository.base, py7zr.SevenZipFile):
+            self.repository.base = os.path.abspath(
+                self.repository.base.filename
+            )
 
         f_loc += '.gz' if gz else '.pkl'
         if os.path.isfile(f_loc):

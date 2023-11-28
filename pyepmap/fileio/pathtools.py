@@ -12,6 +12,19 @@ import py7zr
 log = logging.getLogger(__name__)
 
 
+class Py7zPath:
+    """
+    Class to wrap file paths in 7z archives for proper function selection.
+
+    Paths in 7z archives are given as strings or list of strings. Strings
+    might be mistaken as paths in folders, therefore this wrapper is used.
+
+    """
+
+    def __init__(self, path):
+        self.path = path
+
+
 class Repository:
     """
     Base class representing a study data repository.
@@ -31,7 +44,8 @@ class Repository:
     FUNC_ID = {str: '_path_',
                zipfile.Path: '_zip_',
                py7zr.SevenZipFile: '_7z_',
-               list: '_7z_',  # folder paths in 7z are given as list
+               Py7zPath: '_7z_',
+               # list: '_7z_',  # folder paths in 7z are given as list
                }
 
     def __init__(self, basepath='', pwd=''):
@@ -230,7 +244,12 @@ class Repository:
         return filepath.exists() and filepath.is_file()
 
     def _7z_is_file(self, filepath):
-        _, ext = os.path.splitext(filepath)
+        # TODO: check if file is in archive
+        if isinstance(filepath.path, list):
+            _, ext = os.path.splitext(filepath.path[1])
+        else:
+            _, ext = os.path.splitext(filepath.path)
+
         return not ext == ''
 
     def _path_is_folder(self, path):
@@ -243,10 +262,11 @@ class Repository:
         return path.exists() and path.is_dir()
 
     def _7z_is_folder(self, path):
-        if isinstance(path, list):
-            _, ext = os.path.splitext(path[1])
+        # TODO: check if folder is in archive
+        if isinstance(path.path, list):
+            _, ext = os.path.splitext(path.path[1])
         else:
-            _, ext = os.path.splitext(path)
+            _, ext = os.path.splitext(path.path)
         return not ext
 
     def _path_is_archive(self, path):
@@ -257,9 +277,9 @@ class Repository:
 
     def _7z_is_archive(self, path):
         if isinstance(path, list):
-            return path[1].endswith == '.7z'
+            return path.path[1].endswith == '.7z'
         else:
-            return path.endswith == '.7z'
+            return path.path.endswith == '.7z'
 
     def _path_list_dir(self, path, regex=''):
         return [f for f in os.listdir(path) if re.match(regex, f)]
@@ -268,6 +288,7 @@ class Repository:
         return [f.name for f in path.iterdir() if re.match(regex, f.name)]
 
     def _7z_list_dir(self, path, regex=''):
+        # TODO: support nested folders
         return [f for f in self.root.getnames() if re.match(regex, f)]
 
     def _path_join(self, path):
@@ -294,15 +315,15 @@ class Repository:
         _, ext = os.path.splitext(path)
         if not ext:
             # folder requested
-            return [path, path]
+            return Py7zPath([path, path])
 
         # check if file in subdirectory is requested
         subdir, file = os.path.split(path)
         if subdir:
-            return [subdir, path]
+            return Py7zPath([subdir, path])
 
         # file is requested
-        return path
+        return Py7zPath(path)
 
     def _path_open(self, filepath, pwd=None, mode='rb'):
         return open(filepath, mode=mode)
@@ -313,11 +334,13 @@ class Repository:
         return filepath.open(mode='rb', pwd=pwd)
 
     def _7z_open(self, filepath, pwd=None, mode='rb'):
-        data = self.root.read(filepath)
-        if isinstance(filepath, list):
-            return data[filepath[1]]
+        # in case file was opened already
+        self.root.reset()
+        data = self.root.read(filepath.path)
+        if isinstance(filepath.path, list):
+            return data[filepath.path[1]]
         else:
-            return filepath
+            return data[filepath.path]
 
     def __str__(self):
         return format(self.root)
