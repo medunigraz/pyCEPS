@@ -133,12 +133,6 @@ def get_args():
     # map related arguments
     maps = parser.add_argument_group('Study Maps')
     maps.add_argument(
-        '--list-maps',
-        action='store_true',
-        help='List available and currently imported maps and recording '
-             'points per map.'
-    )
-    maps.add_argument(
         '--import-map',
         nargs='+',
         type=str,
