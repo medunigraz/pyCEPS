@@ -573,7 +573,7 @@ class SurfaceSignalMap:
         Export surface map data to DAT file.
 
         Naming Convention:
-            <basename>.<surface_map_name>.dat
+            <basename>.map.<surface_map_name>.dat
 
         Parameters:
             basename : str
@@ -586,7 +586,7 @@ class SurfaceSignalMap:
         if basename.endswith('.dat'):
             basename = basename[:-4]
 
-        filename = basename + '.' + self.name + '.dat'
+        filename = basename + '.map.' + self.name + '.dat'
 
         writer = FileWriter()
         writer.dump(filename, self.values[:, 0])

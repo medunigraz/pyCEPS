@@ -565,7 +565,7 @@ class EPMap:
         # adjust array dims for compatibility
         interpolated = np.expand_dims(interpolated, 1)
 
-        surf_map = SurfaceSignalMap(name=which,
+        surf_map = SurfaceSignalMap(name=which.upper(),
                                     values=interpolated.astype(np.single),
                                     location='pointData',
                                     description='creationDate:{}'.format(
@@ -723,7 +723,7 @@ class EPMap:
         If no basename is explicitly specified, the map's name is used and
         files are saved to the directory above the study root.
         Naming convention:
-            <basename>.map.<parameter>.pc.dat
+            <basename>.ptdata.<parameter>.pc.dat
 
         Parameters:
             basename : string (optional)
@@ -762,32 +762,32 @@ class EPMap:
 
         if "UNI" in which:
             data = [point.uniVoltage for point in points]
-            dat_file = basename + '.map.UNI.pc.dat'
+            dat_file = basename + '.ptdata.UNI.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "BIP" in which:
             data = [point.bipVoltage for point in points]
-            dat_file = basename + '.map.BIP.pc.dat'
+            dat_file = basename + '.ptdata.BIP.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "LAT" in which:
-            data = [point.mapAnnotation - point.refAnnotation
+            data = [point.latAnnotation - point.refAnnotation
                     for point in points]
-            dat_file = basename + '.map.LAT.pc.dat'
+            dat_file = basename + '.ptdata.LAT.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "IMP" in which:
             data = [point.impedance for point in points]
-            dat_file = basename + '.map.IMP.pc.dat'
+            dat_file = basename + '.ptdata.IMP.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "FRC" in which:
             data = [point.force for point in points]
-            dat_file = basename + '.map.FRC.pc.dat'
+            dat_file = basename + '.ptdata.FRC.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 

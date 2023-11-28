@@ -205,7 +205,7 @@ def get_args():
         '--dump-surface-maps',
         action='store_true',
         help='Export surface maps associated with current "--map" to DAT.\n'
-             'Default: <study_root>/../<map>.map.is.BIP.dat'
+             'Default: <study_root>/../<map>.map.BIP.dat'
     )
     io.add_argument(
         '--dump-lesions',
