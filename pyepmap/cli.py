@@ -160,6 +160,17 @@ def get_args():
              'Default: <study_root>/../<map>.[pts,elem,vtk]'
     )
     io.add_argument(
+        '--dump-point-data',
+        action='store_true',
+        help='Export data for recording points for current "--map" in '
+             'openCARP format.\n'
+             'For each mapping point following data are exported: unipolar '
+             'voltages (UNI), bipolar voltages (BIP) and local activation '
+             'time (LAT), impedance (IMP, if available), and contact force ('
+             'FRC, if available).'
+             'Default: <study_root>/../<map>.ptdata.UNI.pc.dat'
+    )
+    io.add_argument(
         '--dump-point-ecgs',
         type=str,
         action=OptionalListParser,
@@ -369,6 +380,10 @@ def execute_commands(args):
             if study.meshes:
                 logger.info('found additional meshes in study, exporting...')
                 study.export_additional_meshes()
+
+        # dump point data for recording points
+        if args.dump_point_data:
+            study.maps[study_map].export_point_data()
 
         # dump ECG traces for recording points
         if args.dump_point_ecgs:
