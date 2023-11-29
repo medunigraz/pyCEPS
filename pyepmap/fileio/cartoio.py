@@ -1290,7 +1290,9 @@ class CartoMap(EPMap):
                 ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
                 ecg = ecg.T
             elif meth.lower() == 'ccf':
-                mean_ecg = np.median(data, axis=0)
+                # compare mean, median might result in all zeroes when WOI
+                # is outside QRS
+                mean_ecg = np.mean(data, axis=0)
                 # get WOI indices
                 idx_start = ref + woi[0]
                 idx_end = ref + woi[1]
