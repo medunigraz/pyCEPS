@@ -909,6 +909,7 @@ class EPMap:
                       't': channel_data.shape[1],
                       'unites_t': 'ms',
                       'unites': 'mV',
+                      'dim_t': channel_data.shape[0]-1, # (num_tsteps - 1) * inc_t
                       'org_t': 0,
                       'inc_t': 1}
 
