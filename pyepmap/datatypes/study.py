@@ -560,7 +560,8 @@ class EPMap:
 
         interpolated = inverse_distance_weighting(unique_points,
                                                   data[unique_ids],
-                                                  mesh_points)
+                                                  mesh_points,
+                                                  k=7)
 
         # adjust array dims for compatibility
         interpolated = np.expand_dims(interpolated, 1)
