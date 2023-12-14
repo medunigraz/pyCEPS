@@ -737,7 +737,8 @@ class CartoStudy(EPStudy):
                 # folders, remove trailing "/"
                 f_loc.at = f_loc.at[:-1]
 
-            surface = read_mesh_file(f_loc)
+            with self.repository.open(f_loc, mode='rb') as fid:
+                surface = read_mesh_file(fid)
 
             export_file = os.path.join(basename, file)
             # treat meshes with no name, i.e. ".mesh"
@@ -746,7 +747,15 @@ class CartoStudy(EPStudy):
                 export_file = os.path.join(basename, 'noname' + file)
 
             # now we can export the mesh
-            surface.write_mesh_vtk(export_file)
+            f = surface.dump_mesh_carp(os.path.splitext(export_file)[0])
+            log.info('exported anatomical shell to {}'
+                     .format(f + ' (.pts, .elem)'))
+            surf_maps = surface.get_map_names()
+            surf_labels = surface.get_label_names()
+            surface.dump_mesh_vtk(export_file,
+                                  maps_to_add=surf_maps,
+                                  labels_to_add=surf_labels
+                                  )
 
     def rfi_from_visitag_grid(self):
         """
