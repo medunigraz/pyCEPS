@@ -648,7 +648,7 @@ class EPMap:
 
         f = self.surface.dump_mesh_carp(basename)
         log.info('exported anatomical shell to {}'
-                 .format(f + ' (.pts, .elem'))
+                 .format(f + ' (.pts, .elem)'))
 
         return
 
