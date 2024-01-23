@@ -24,9 +24,9 @@ import numpy as np
 import xml.etree.ElementTree as xml
 import scipy.spatial.distance as sp_distance
 
-from pyepmap.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
-from pyepmap.datatypes.cartotypes import PointForces
-from pyepmap.utils import get_col_idx_from_header
+from src.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
+from src.datatypes.cartotypes import PointForces
+from src.utils import get_col_idx_from_header
 
 
 logger = logging.getLogger(__name__)

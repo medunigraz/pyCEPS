@@ -30,8 +30,8 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'pyepmap'
-DESCRIPTION = ('pyepmap provides methods for importing EP studies from '
+NAME = 'pyceps'
+DESCRIPTION = ('pyceps provides methods for importing EP studies from '
                'commercial Clinical Mapping Systems and to export data to '
                'openCARP compatible data formats.'
                )
@@ -40,7 +40,7 @@ URL = 'https://github.com/me/myproject'
 EMAIL = 'robert.arnold@medunigraz.at'
 AUTHOR = 'Robert Arnold'
 REQUIRES_PYTHON = '>=3.9.0'
-VERSION = '1.0.3'
+VERSION = '0.0.1'
 
 # What packages are optional?
 EXTRAS = {
@@ -124,10 +124,10 @@ setup(
     url=URL,
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
     # If your package is a single module, use this instead of 'packages':
-    # py_modules=['pyepmap'],
+    # py_modules=['pyceps'],
     entry_points={
         # command = package.module:function
-        'console_scripts': ['pyepmap=pyepmap.cli:run'],
+        'console_scripts': ['pyceps=pyceps.cli:run'],
     },
     install_requires=REQUIRED,
     extras_require=EXTRAS,

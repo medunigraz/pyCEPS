@@ -25,10 +25,10 @@ import numpy as np
 import gzip
 import pickle
 
-from pyepmap.fileio.pathtools import Repository
-from pyepmap.datatypes import EPStudy, EPMap, EPPoint, Mesh
-from pyepmap.fileio import FileWriter
-from pyepmap.fileio.cartoutils import (# open_carto_file, join_carto_path,
+from src.fileio.pathtools import Repository
+from src.datatypes import EPStudy, EPMap, EPPoint, Mesh
+from src.fileio import FileWriter
+from src.fileio.cartoutils import (# open_carto_file, join_carto_path,
                                        # list_carto_dir, carto_isfile,
     # carto_isdir,
                                        read_mesh_file,
@@ -37,20 +37,20 @@ from pyepmap.fileio.cartoutils import (# open_carto_file, join_carto_path,
                                        channel_names_from_pos_file,
                                        read_force_file,
                                        read_visitag_file)
-from pyepmap.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
-                                          SurfaceErrorTable,
-                                          PasoTable, CFAEColoringTable, Tag,
-                                          CartoMappingParameters,
-                                          RefAnnotationConfig, PointImpedance,
-                                          RFAblationParameters, RFForce, MapRF,
-                                          Visitag, VisitagAblationSite,
-                                          VisitagGridPoint, VisitagAblationGrid,
-                                          VisitagRFIndex
-                                          )
-from pyepmap.datatypes.lesions import Lesion, RFIndex
-from pyepmap.datatypes.signals import Trace, BodySurfaceECG
-from pyepmap.exceptions import MapAttributeError, MeshFileNotFoundError
-from pyepmap.utils import console_progressbar, get_col_idx_from_header
+from src.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
+                                      SurfaceErrorTable,
+                                      PasoTable, CFAEColoringTable, Tag,
+                                      CartoMappingParameters,
+                                      RefAnnotationConfig, PointImpedance,
+                                      RFAblationParameters, RFForce, MapRF,
+                                      Visitag, VisitagAblationSite,
+                                      VisitagGridPoint, VisitagAblationGrid,
+                                      VisitagRFIndex
+                                      )
+from src.datatypes.lesions import Lesion, RFIndex
+from src.datatypes.signals import Trace, BodySurfaceECG
+from src.exceptions import MapAttributeError, MeshFileNotFoundError
+from src.utils import console_progressbar, get_col_idx_from_header
 
 
 log = logging.getLogger(__name__)

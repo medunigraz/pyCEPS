@@ -28,11 +28,11 @@ from argparse import ArgumentParser, RawTextHelpFormatter, Action
 import logging
 import tempfile
 
-from pyepmap.fileio.cartoio import CartoStudy
-from pyepmap.fileio.precisionio import PrecisionStudy
+from src.fileio.cartoio import CartoStudy
+from src.fileio.precisionio import PrecisionStudy
 
 
-logger = logging.getLogger('pyepmap')
+logger = logging.getLogger('pyceps')
 
 
 class LogFormatter(logging.Formatter):
