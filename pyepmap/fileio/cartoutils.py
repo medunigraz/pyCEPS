@@ -32,67 +32,6 @@ from pyepmap.utils import get_col_idx_from_header
 logger = logging.getLogger(__name__)
 
 
-# def open_carto_file(filepath, pwd=None, mode='rb'):
-#     """Open a file within a Carto repository."""
-#
-#     if isinstance(filepath, zipfile.Path):
-#         return filepath.open(mode=mode, pwd=pwd)
-#
-#     return open(filepath, mode=mode)
-#
-#
-# def list_carto_dir(root, regex=''):
-#     """List contents of directory within Carto repository."""
-#
-#     if isinstance(root, zipfile.Path):
-#         return [f.name for f in root.iterdir() if re.match(regex, f.name)]
-#     if root.endswith('.zip'):
-#         return [f.name for f in zipfile.Path(root).iterdir()
-#                 if re.match(regex, f.name)]
-#
-#     return [f for f in os.listdir(root) if re.match(regex, f)]
-#
-#
-# def join_carto_path(root, filepath):
-#     """Join a path within a Carto repository."""
-#
-#     if isinstance(root, zipfile.Path):
-#         _, ext = os.path.splitext(filepath)
-#         # zipfile paths pointing to folders end with "/"
-#         filepath = filepath + '/' if filepath and not ext else filepath
-#         return root.joinpath(filepath)
-#     elif root.endswith('.zip'):
-#         # check if folder or file is requested
-#         # folder names in zipfile end with "/"
-#         _, ext = os.path.splitext(filepath)
-#         filepath = filepath + '/' if filepath and not ext else filepath
-#         try:
-#             return zipfile.Path(root, at=filepath)
-#         except FileNotFoundError:
-#             return root
-#         # return zipfile.Path(root, at=filepath)
-#
-#     return os.path.join(root, filepath)
-#
-#
-# def carto_isfile(filepath):
-#     """Check if filepath points to existing file in Carto repository."""
-#
-#     if isinstance(filepath, zipfile.Path):
-#         return filepath.exists() and filepath.is_file()
-#
-#     return os.path.isfile(filepath)
-#
-#
-# def carto_isdir(path):
-#     """Check if path points to existing folder in Carto repository."""
-#
-#     if isinstance(path, zipfile.Path):
-#         return path.exists() and path.is_dir()
-#
-#     return os.path.isdir(path)
-
-
 def read_mesh_file(fid, invisible_groups=False, encoding='cp1252'):
     """
     Read a CARTO3 mesh file.

@@ -28,10 +28,6 @@ from argparse import ArgumentParser, RawTextHelpFormatter, Action
 import logging
 import tempfile
 
-import numpy
-import numpy as np
-numpy.seterr(all='raise')
-
 from pyepmap.fileio.cartoio import CartoStudy
 from pyepmap.fileio.precisionio import PrecisionStudy
 
