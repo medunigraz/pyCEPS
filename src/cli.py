@@ -52,13 +52,13 @@ class OptionalListParser(Action):
     Combine optional argument '?' and list arguments '+'.
 
     Returns:
-        list of arguments or "NONE"
+        list of arguments or "DEFAULT"
 
     """
 
     def __call__(self, parser, namespace, values, option_string=None):
         if not values:
-            setattr(namespace, self.dest, 'NONE')
+            setattr(namespace, self.dest, 'DEFAULT')
         else:
             setattr(namespace, self.dest, values)
 
