@@ -1,6 +1,6 @@
 # pyCEPS
 
-pyEPmap provides an interface to import, visualize and translate clinical mapping data.
+pyCEPS provides an interface to import, visualize and translate clinical mapping data.
 Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster), EnSite Precision<sup>&trade;</sup> (Abbot).
 
 ### Installation
