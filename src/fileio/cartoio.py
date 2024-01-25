@@ -286,11 +286,12 @@ class CartoStudy(EPStudy):
         """
 
         # do some pre-import checks
-        map_names = super().import_maps()
+        map_names = super().import_maps(map_names)
 
         # now load the maps
         for map_name in map_names:
             try:
+                log.info('importing map {}:'.format(map_name))
                 new_map = CartoMap(map_name, self.studyXML,
                                    parent=self,
                                    egm_names_from_pos=egm_names_from_pos)
