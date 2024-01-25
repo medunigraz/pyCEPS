@@ -22,6 +22,7 @@ Command line interface for pyEPmap
 """
 
 import os
+import traceback
 import shutil
 import sys
 from argparse import ArgumentParser, Action
@@ -498,9 +499,9 @@ def run():
         log_file = os.path.join(ep_study.build_export_basename(''),
                                 ep_study.name + '_import.log'
                                 )
-    except Exception as err:
+    except:
         logger.error('File import finished with errors!\n{}'
-                     .format(err))
+                     .format(traceback.format_exc()))
     finally:
         # close handlers for logging
         for handler in logger.handlers:
