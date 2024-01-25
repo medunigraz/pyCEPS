@@ -62,14 +62,7 @@ class CartoStudy(EPStudy):
 
     Attributes:
         name : string
-            name of the study given by Carto
-        studyRoot : str
-            path to folder containing all Carto files.
-            If the study is imported from a folder, this points to the
-            folder containing <study>.xml. If the study is imported from ZIP
-            this is the absolute path to the ZIP file.
-            If importing from PKL file and the original study repository is
-            inaccessible (invalid), this is the absolute path to the PKL file.
+            name of the study given by Carto.
         studyXML : str
             filename of top-level XML describing the study
         mapNames : list of str
@@ -106,10 +99,10 @@ class CartoStudy(EPStudy):
         rfi_from_visitag_grid()
             (re)calculate ablation index from ablation grid
         is_root_valid(root_dir=None)
-            check if directory is valid root. If root_dir is None,
-            the current studyRoot is checked.
+            check if repository is valid root. If root_dir is None,
+            the current repository is checked.
         set_root(root_dir)
-            check directory and set studyRoot to given directory if valid
+            check directory and set repository to given directory if valid
 
     """
 
@@ -1198,7 +1191,7 @@ class CartoMap(EPMap):
         Parameters:
             directory : str
                 path to VisiTag data. If None, standard location
-                ../<studyRoot>/VisiTagExport is used
+                ../<studyRepository>/VisiTagExport is used
 
         Returns:
             None

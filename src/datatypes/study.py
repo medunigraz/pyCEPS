@@ -48,16 +48,12 @@ class EPStudy:
         system : str
             name of the EAM system used
         repository : str
-            absolute path to study data repository. Can be a folder or a
-            ZIP archive
+            path object pointing  to study data repository. Can be a folder or
+            a ZIP archive
         pwd : str (optional)
             password to access encrypted ZIP archives
         encoding : str (optional)
             file encoding used to read files. (default: cp1252)
-        studyRoot : str, zipfile.Path
-            absolute path to root directory. For Carto3 studies this is the
-            folder containing the <study>.xml file, for Precision this is the
-            top-level folder containing sub-folders per mapping procedure
         name : str
             name of the study
         mapNames : list of str
@@ -77,11 +73,11 @@ class EPStudy:
         import_maps(map_names)
             load mapping procedures
         is_root_valid(root_dir=None)
-            checks if the attribute studyRoot points to a valid location,
+            checks if the repository points to a valid location,
             i.e. if it points to mapping data. If a root_dir is given as
             argument, this file path is checked
         set_root(root_dir)
-            set the studyRoot attribute to the given directory. The
+            set the repository attribute to the given directory. The
             specified location is checked first for validity and set only if
             new root is valid
         list_maps(minimal=False)
@@ -135,12 +131,9 @@ class EPStudy:
                             .format(system, self.EAM_SYSTEMS))
 
         self.system = system
-        # self.repository = os.path.abspath(study_repo)
         self.repository = Repository(study_repo)
         self.pwd = pwd.encode(encoding='UTF-8')
         self.encoding = encoding
-
-        self.studyRoot = None
 
         self.name = ''
         self.mapNames = []
