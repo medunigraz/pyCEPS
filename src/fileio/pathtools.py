@@ -219,8 +219,10 @@ class Repository:
         if isinstance(path, str):
             path = os.path.abspath(path)
             if not os.path.exists(path):
-                raise FileNotFoundError('EAM repository at {} not found'
-                                        .format(path))
+                log.warning('EAM path {} not found!'.format(path))
+                return ''
+                # raise FileNotFoundError('EAM repository at {} not found'
+                #                         .format(path))
 
         if isinstance(path, list):
             # if 7z folder is requested return root (py7zr.SevenZipFile)

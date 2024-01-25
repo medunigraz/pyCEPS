@@ -827,6 +827,9 @@ class CartoStudy(EPStudy):
             return True
         elif root_dir:
             tmp_root = Repository(root_dir, pwd=pwd)
+            if not tmp_root.root:
+                # dummy repo was not initialized properly, so root is invalid
+                return False
             return self._locate_study_xml(tmp_root, pwd=pwd) is not None
 
         return False
