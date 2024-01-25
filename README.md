@@ -1,82 +1,172 @@
 # pyCEPS
 
-pyCEPS provides an interface to import, visualize and translate clinical mapping data.
-Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster), EnSite Precision<sup>&trade;</sup> (Abbot).
+pyCEPS provides an interface to import, visualize and translate clinical
+mapping data (EAM data).
+Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster) and
+EnSite Precision<sup>&trade;</sup> (Abbot).
 
-### Installation
-Python 3.6 or higher is required. Just use [pip](https://pip.pypa.io) to install:
+<img src="pyCEPS.png" width="300" height="300">
+
+## Installation
+
+Python 3.9 or higher is required. Just use [pip](https://pip.pypa.io) to install:
+
 ```shell
-pip install pyceps
+python3 -m pip install pyceps
 ```
+
 This will install all necessary dependencies and add a CLI entry point.
 To test the installation run
+
 ```shell
 pyceps --help
 ```
 
-### Usage
-To load a clinical mapping study, the system used must be specified and the location of the exported data must be given.
-The study repository can either be a ZIP archive (preferred) or the top-level folder of the extracted data set.
+## Standard Workflow
+Typically, a user wants to import and translate complete EAM data sets, save
+a reduced version of the data set to disk (PKL file), and visualize the data.
 ```shell
-pyceps.py --system "carto" --study-repository "path_to_repository"
-pyceps.py --system "precision" --study-repository "path_to_repository"
+pyceps --system "carto" --study-repository "path_to_repository" --convert --visualize --save-study
+pyceps --system "precision" --study-repository "path_to_repository" --convert --visualize --save-study
 ```
-This will gather basic information from the data set, i.e. name of the study, performed mapping procedures, etc.
-The following commands are chained to this basic usage.
+*--system* specifies the EAM system used for data acquisition.<br>
+*--study-repository* points to a (valid) data location, e.g. a ZIP archive
+(preferred), or a folder.<br>
+*--convert* automatically loads the data set in its entirety and exports all
+data to openCARP compatible formats.<br>
+*--visualize* opens a local HTML site and interactively shows the EAM data.<br>
+*--save-study* saves the (reduced) EAM data set to disk as PKL file, which can
+later used (much faster than re-importing the EAM data).
 
-To import mapping procedures the name of the mapping procedure can be specified, or all available maps can be imported.
-All information related to the mapping procedure is loaded, i.e. anatomical shell, mapping points, ablation lesions, etc.
+To open and work with a previously generated PKL file use
+```shell
+pyceps --system "carto" --pkl-file "path_to_pkl" --visualize ...
+pyceps --system "precision" --pkl-file "path_to_pkl" --visualize ...
+```
+
+## Saving a reduced version of EAM data
+Upon import of EAM data, a data representation is built which can be saved to
+disk for later usage.
+This data object does not contain the entirety of data available in the EAM
+data set (e.g. not all ECG and EGM data is read) but can therefore be loaded
+very quickly.
+To save the data representation in PKL format to disk use
+```shell
+--save-study
+```
+The PKL file is automatically saved in the folder above the repository path
+(if EAM data resides in a folder), or in the same folder if data is imported
+from ZIP archives.
+Optionally, a different location can be given.
+
+## Visualizing the data
+Once a data set was imported/loaded it can be visualized using a local HTML
+site to evaluate the quality of the data set:
+```shell
+--visualize
+```
+> Note: This will lock the console!
+
+![Local HTML sites for data visualization](/dash_interface.jpeg "Data Visualization")
+
+## Advanced Import/Export
+To control which data, i.e. mapping procedures, are imported from an EAM data
+set and which data are exported, the commands described below can be chained
+together.
+It is also possible to add data to an existing PKL file at a later point,
+if the study repository (original data) is still accessible. See usage of
+*--change-root* for details on how to change data location.
+
+### Specifying the EAM system
+```shell
+--system [carto, precision]
+```
+
+### Specifying the data location
+```shell
+--study-repository "path_to_repository"
+--pkl-file "path_to_pkl"
+```
+Using these commands will gather basic information from the data set,
+(i.e. name of the study, performed mapping procedures, etc.) and display this
+information on the command line.
+
+> **To use the following commands, the used EAM system AND the data location
+> MUST be specified!**
+
+### Specifying what to import
+To import single mapping procedures the name of the mapping procedure can be
+specified. Optional *all* can be used to import all mapping procedures (same as
+using *--convert*). 
 ```shell
 pyceps.py ... --import-map "map_name"
 pyceps.py ... --import-map "all"
 ```
+All information related to the mapping procedure is loaded, i.e.
+anatomical shell, mapping points, ablation lesions, etc.
 
-A pickled version of the imported dataset can be saved:
+### Specifying what to export
+It is possible to export specific items from the data set.
+This works only for single mapping procedures, therefore a mapping procedure
+to work with has to be specified first using
 ```shell
-pyceps.py ... --import-map "all" --save-study
+--map "map_name"
+```
+All following commands are then applied to this mapping procedure only.
+
+```shell
+--dump-mesh
+--dump-point-data
+--dump-point-egms
+--dump-point-ecgs
+--dump-map-ecgs
+--dump-surface-maps
+--dump-lesions
 ```
 
-To open a saved pickled version of the data set use
-```shell
-pyceps.py --system "carto" --pkl-file "path_to_pkl"
-```
-The system has to be specified again.
-After loading additional data can be added to the data set if the study repository (original data) is still accessible.
+> Note: If *--convert* is used, this is obsolete since data is exported for all
+> mapping procedures.
 
-Imported data sets can be visualized in a local HTML site to evaluate the quality of the data set:
-```shell
-pyceps.py ... --visualize
-```
+> Note: Using *--dump-point-ecgs* needs access to EAM data repository to load
+> ECG data!<br>
+> See below how to set a valid path if necessary
 
-To export data in OPENcarp compatible formats (.pts, .elem, .igb, .dat) the following commands can be used
+### Changing the location of original EAM data
+When opening EAM data from previously generated PKL files, the original EAM
+data set might not be accessible or the path might have changed (e.g. when
+using mounted devices).
+Information if the path stored in the PKL file is still valid is displayed upon
+loading of a PKL file.
+To change the path to an EAM data repository use
 ```shell
-pyceps.py ... --dump-mesh
-pyceps.py ... --dump-point-egms
-pyceps.py ... --dump-point-ecgs
-pyceps.py ... --dump-map-ecgs
-pyceps.py ... --dump-surface-maps
-pyceps.py ... --dump-lesions
+--change-root "path_to_repository"
 ```
+This will check if the new path is valid and set it accordingly.
 
-### Advanced
+## For Experts
+
 The data contained in exported data sets differs for different mapping systems.
 Exporting data via the CLI accesses only data common to every mapping system.
 To access the entirety of imported data, Python scripts have to be used.
 
-````python
+```python
 from src import CartoStudy
 
 study = CartoStudy("path_to_repository")
 # import all available maps
 study.import_maps(study.mapNames)
 ...
-````
+```
 
-### License
-This software is made available under the terms of the GNU Lesser General Public License v3.0
+## License
 
-### How To Cite
+This software is made available under the terms of the
+GNU General Public License v3.0 (GPLv3+).
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-### Whom Do I Talk To?
+## How To Cite
+
+## Whom Do I Talk To?
+
 * [R. Arnold](mailto:robert.arnold@medunigraz.at?subject=pyceps)
 * A. Prassl
