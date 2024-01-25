@@ -325,6 +325,7 @@ def load_study(args):
             study = PrecisionStudy.load(study_pkg, root=args.change_root)
         else:
             raise KeyError('unknown EAM system specified!')
+        # TODO: notification if root has changed (needed to process unsaved changes)
 
         # verify study root
         if not study.is_root_valid():
