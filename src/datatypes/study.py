@@ -1,5 +1,21 @@
 # -*- coding: utf-8 -*-
 
+# pyCEPS allows to import, visualize and translate clinical EAM data.
+#     Copyright (C) 2023  Robert Arnold
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import datetime
 import logging
 import os
@@ -10,12 +26,15 @@ import gzip
 import pickle
 import webbrowser
 
-from pyepmap.datatypes.surface import SurfaceSignalMap
-from pyepmap.fileio import FileWriter
-from pyepmap.interpolation import (inverse_distance_weighting,
-                                   remove_redundant_points
-                                   )
-from pyepmap.visualize import get_dash_app
+import py7zr
+
+from src.fileio.pathtools import Repository
+from src.datatypes.surface import SurfaceSignalMap
+from src.fileio import FileWriter
+from src.interpolation import (inverse_distance_weighting,
+                               remove_redundant_points
+                               )
+from src.visualize import get_dash_app
 
 
 log = logging.getLogger(__name__)
@@ -29,16 +48,12 @@ class EPStudy:
         system : str
             name of the EAM system used
         repository : str
-            absolute path to study data repository. Can be a folder or a
-            ZIP archive
+            path object pointing  to study data repository. Can be a folder or
+            a ZIP archive
         pwd : str (optional)
             password to access encrypted ZIP archives
         encoding : str (optional)
             file encoding used to read files. (default: cp1252)
-        studyRoot : str, zipfile.Path
-            absolute path to root directory. For Carto3 studies this is the
-            folder containing the <study>.xml file, for Precision this is the
-            top-level folder containing sub-folders per mapping procedure
         name : str
             name of the study
         mapNames : list of str
@@ -58,11 +73,11 @@ class EPStudy:
         import_maps(map_names)
             load mapping procedures
         is_root_valid(root_dir=None)
-            checks if the attribute studyRoot points to a valid location,
+            checks if the repository points to a valid location,
             i.e. if it points to mapping data. If a root_dir is given as
             argument, this file path is checked
         set_root(root_dir)
-            set the studyRoot attribute to the given directory. The
+            set the repository attribute to the given directory. The
             specified location is checked first for validity and set only if
             new root is valid
         list_maps(minimal=False)
@@ -114,20 +129,11 @@ class EPStudy:
             raise TypeError('Unknown EAM system {}!'
                             'Choose from: {}'
                             .format(system, self.EAM_SYSTEMS))
-        if not isinstance(study_repo, str):
-            raise TypeError('path to study repository must be of type string'
-                            'not {}'
-                            .format(type(study_repo)))
-        if not os.path.exists(study_repo):
-            raise FileExistsError('Study repository {} does not exist!'
-                                  .format(study_repo))
 
         self.system = system
-        self.repository = os.path.abspath(study_repo)
+        self.repository = Repository(study_repo)
         self.pwd = pwd.encode(encoding='UTF-8')
         self.encoding = encoding
-
-        self.studyRoot = ''
 
         self.name = ''
         self.mapNames = []
@@ -266,23 +272,7 @@ class EPStudy:
         folder is created in the same folder as root.
         """
 
-        study_root = self.studyRoot
-        if isinstance(study_root, zipfile.Path):
-            # convert study root to path string
-            study_root = os.path.abspath(study_root.root.filename)
-
-        if os.path.isfile(study_root):
-            # study root points to ZIP or PKL file, export to same directory
-            export_folder = os.path.join(os.path.dirname(study_root),
-                                         folder_name)
-        else:
-            # study root points to a folder, export to folder above
-            export_folder = os.path.join(study_root,
-                                         '../../src',
-                                         folder_name)
-
-        # this should make path platform-independent
-        export_folder = os.path.abspath(export_folder)
+        export_folder = self.repository.build_export_basename(folder_name)
 
         # check if export folder exists, create if necessary
         if not os.path.isdir(export_folder):
@@ -327,14 +317,25 @@ class EPStudy:
         else:
             f_loc = os.path.join(self.build_export_basename(''), self.name)
 
-        # make sure path exists, create if necessary
-        if not os.path.exists(os.path.dirname(f_loc)):
-            os.mkdir(os.path.dirname(f_loc))
-
         # handle un-pickleable attributes
-        study_root = self.studyRoot
-        if isinstance(study_root, zipfile.Path):
-            self.studyRoot = os.path.abspath(self.studyRoot.root.filename)
+        study_base = self.repository.base
+        study_root = self.repository.root
+        if isinstance(self.repository.root, zipfile.Path):
+            self.repository.root = os.path.abspath(
+                self.repository.root.root.filename
+            )
+        if isinstance(self.repository.base, zipfile.Path):
+            self.repository.base = os.path.abspath(
+                self.repository.base.root.filename
+            )
+        if isinstance(self.repository.root, py7zr.SevenZipFile):
+            self.repository.root = os.path.abspath(
+                self.repository.root.filename
+            )
+        if isinstance(self.repository.base, py7zr.SevenZipFile):
+            self.repository.base = os.path.abspath(
+                self.repository.base.filename
+            )
 
         f_loc += '.gz' if gz else '.pkl'
         if os.path.isfile(f_loc):
@@ -366,7 +367,8 @@ class EPStudy:
         f.close()
 
         # restore study root
-        self.studyRoot = study_root
+        self.repository.root = study_root
+        self.repository.base = study_base
 
         log.info('saved study to {}'.format(f_loc))
 
@@ -567,12 +569,13 @@ class EPMap:
 
         interpolated = inverse_distance_weighting(unique_points,
                                                   data[unique_ids],
-                                                  mesh_points)
+                                                  mesh_points,
+                                                  k=7)
 
         # adjust array dims for compatibility
         interpolated = np.expand_dims(interpolated, 1)
 
-        surf_map = SurfaceSignalMap(name=which,
+        surf_map = SurfaceSignalMap(name=which.upper(),
                                     values=interpolated.astype(np.single),
                                     location='pointData',
                                     description='creationDate:{}'.format(
@@ -654,7 +657,7 @@ class EPMap:
 
         f = self.surface.dump_mesh_carp(basename)
         log.info('exported anatomical shell to {}'
-                 .format(f + ' (.pts, .elem'))
+                 .format(f + ' (.pts, .elem)'))
 
         return
 
@@ -730,7 +733,7 @@ class EPMap:
         If no basename is explicitly specified, the map's name is used and
         files are saved to the directory above the study root.
         Naming convention:
-            <basename>.map.<parameter>.pc.dat
+            <basename>.ptdata.<parameter>.pc.dat
 
         Parameters:
             basename : string (optional)
@@ -769,32 +772,32 @@ class EPMap:
 
         if "UNI" in which:
             data = [point.uniVoltage for point in points]
-            dat_file = basename + '.map.UNI.pc.dat'
+            dat_file = basename + '.ptdata.UNI.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "BIP" in which:
             data = [point.bipVoltage for point in points]
-            dat_file = basename + '.map.BIP.pc.dat'
+            dat_file = basename + '.ptdata.BIP.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "LAT" in which:
-            data = [point.mapAnnotation - point.refAnnotation
+            data = [point.latAnnotation - point.refAnnotation
                     for point in points]
-            dat_file = basename + '.map.LAT.pc.dat'
+            dat_file = basename + '.ptdata.LAT.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "IMP" in which:
             data = [point.impedance for point in points]
-            dat_file = basename + '.map.IMP.pc.dat'
+            dat_file = basename + '.ptdata.IMP.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
         if "FRC" in which:
             data = [point.force for point in points]
-            dat_file = basename + '.map.FRC.pc.dat'
+            dat_file = basename + '.ptdata.FRC.pc.dat'
             writer.dump(dat_file, data)
             log.info('exported surface map data to {}'.format(dat_file))
 
@@ -916,6 +919,7 @@ class EPMap:
                       't': channel_data.shape[1],
                       'unites_t': 'ms',
                       'unites': 'mV',
+                      'dim_t': channel_data.shape[0]-1, # (num_tsteps - 1) * inc_t
                       'org_t': 0,
                       'inc_t': 1}
 

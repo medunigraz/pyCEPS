@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
-# Created by Robert at 31.08.2023
+
+# pyCEPS allows to import, visualize and translate clinical EAM data.
+#     Copyright (C) 2023  Robert Arnold
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import logging
@@ -8,15 +23,15 @@ import gzip
 import numpy as np
 import re
 
-from pyepmap.datatypes import EPStudy, EPMap, EPPoint
-from pyepmap.datatypes.precisiontypes import DetectionAlgorithm
-from pyepmap.datatypes.signals import Trace, BodySurfaceECG
-from pyepmap.datatypes.lesions import Lesion, RFIndex
-from pyepmap.fileio.precisionutils import (read_landmark_geo, load_dxl_data,
-                                           load_ecg_data, load_lesion_data
-                                           )
-from pyepmap.exceptions import MeshFileNotFoundError
-from pyepmap.utils import console_progressbar
+from src.datatypes import EPStudy, EPMap, EPPoint
+from src.datatypes.precisiontypes import DetectionAlgorithm
+from src.datatypes.signals import Trace, BodySurfaceECG
+from src.datatypes.lesions import Lesion, RFIndex
+from src.fileio.precisionutils import (read_landmark_geo, load_dxl_data,
+                                       load_ecg_data, load_lesion_data
+                                       )
+from src.exceptions import MeshFileNotFoundError
+from src.utils import console_progressbar
 
 
 log = logging.getLogger(__name__)

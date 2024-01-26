@@ -1,11 +1,26 @@
 # -*- coding: utf-8 -*-
-# Created by Robert at 25.04.2023
+
+# pyCEPS allows to import, visualize and translate clinical EAM data.
+#     Copyright (C) 2023  Robert Arnold
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
 import numpy as np
 from collections import namedtuple
 
-from pyepmap.fileio.writer import FileWriter
+from src.fileio.writer import FileWriter
 
 
 log = logging.getLogger(__name__)
@@ -573,7 +588,7 @@ class SurfaceSignalMap:
         Export surface map data to DAT file.
 
         Naming Convention:
-            <basename>.<surface_map_name>.dat
+            <basename>.map.<surface_map_name>.dat
 
         Parameters:
             basename : str
@@ -586,7 +601,7 @@ class SurfaceSignalMap:
         if basename.endswith('.dat'):
             basename = basename[:-4]
 
-        filename = basename + '.' + self.name + '.dat'
+        filename = basename + '.map.' + self.name + '.dat'
 
         writer = FileWriter()
         writer.dump(filename, self.values[:, 0])

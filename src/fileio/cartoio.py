@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
-# Created by Robert at 23.08.2023
+
+# pyCEPS allows to import, visualize and translate clinical EAM data.
+#     Copyright (C) 2023  Robert Arnold
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import logging
@@ -10,30 +25,32 @@ import numpy as np
 import gzip
 import pickle
 
-from pyepmap.datatypes import EPStudy, EPMap, EPPoint, Mesh
-from pyepmap.fileio import FileWriter
-from pyepmap.fileio.cartoutils import (open_carto_file, join_carto_path,
-                                       list_carto_dir, carto_isfile, carto_isdir,
+from src.fileio.pathtools import Repository
+from src.datatypes import EPStudy, EPMap, EPPoint, Mesh
+from src.fileio import FileWriter
+from src.fileio.cartoutils import (# open_carto_file, join_carto_path,
+                                       # list_carto_dir, carto_isfile,
+    # carto_isdir,
                                        read_mesh_file,
                                        read_ecg_file_header, read_ecg_file,
                                        channel_names_from_ecg_header,
                                        channel_names_from_pos_file,
                                        read_force_file,
                                        read_visitag_file)
-from pyepmap.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
-                                          SurfaceErrorTable,
-                                          PasoTable, CFAEColoringTable, Tag,
-                                          CartoMappingParameters,
-                                          RefAnnotationConfig, PointImpedance,
-                                          RFAblationParameters, RFForce, MapRF,
-                                          Visitag, VisitagAblationSite,
-                                          VisitagGridPoint, VisitagAblationGrid,
-                                          VisitagRFIndex
-                                          )
-from pyepmap.datatypes.lesions import Lesion, RFIndex
-from pyepmap.datatypes.signals import Trace, BodySurfaceECG
-from pyepmap.exceptions import MapAttributeError, MeshFileNotFoundError
-from pyepmap.utils import console_progressbar, get_col_idx_from_header
+from src.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
+                                      SurfaceErrorTable,
+                                      PasoTable, CFAEColoringTable, Tag,
+                                      CartoMappingParameters,
+                                      RefAnnotationConfig, PointImpedance,
+                                      RFAblationParameters, RFForce, MapRF,
+                                      Visitag, VisitagAblationSite,
+                                      VisitagGridPoint, VisitagAblationGrid,
+                                      VisitagRFIndex
+                                      )
+from src.datatypes.lesions import Lesion, RFIndex
+from src.datatypes.signals import Trace, BodySurfaceECG
+from src.exceptions import MapAttributeError, MeshFileNotFoundError
+from src.utils import console_progressbar, get_col_idx_from_header
 
 
 log = logging.getLogger(__name__)
@@ -45,14 +62,7 @@ class CartoStudy(EPStudy):
 
     Attributes:
         name : string
-            name of the study given by Carto
-        studyRoot : str
-            path to folder containing all Carto files.
-            If the study is imported from a folder, this points to the
-            folder containing <study>.xml. If the study is imported from ZIP
-            this is the absolute path to the ZIP file.
-            If importing from PKL file and the original study repository is
-            inaccessible (invalid), this is the absolute path to the PKL file.
+            name of the study given by Carto.
         studyXML : str
             filename of top-level XML describing the study
         mapNames : list of str
@@ -89,10 +99,10 @@ class CartoStudy(EPStudy):
         rfi_from_visitag_grid()
             (re)calculate ablation index from ablation grid
         is_root_valid(root_dir=None)
-            check if directory is valid root. If root_dir is None,
-            the current studyRoot is checked.
+            check if repository is valid root. If root_dir is None,
+            the current repository is checked.
         set_root(root_dir)
-            check directory and set studyRoot to given directory if valid
+            check directory and set repository to given directory if valid
 
     """
 
@@ -124,17 +134,15 @@ class CartoStudy(EPStudy):
 
         # locate study XML
         log.info('Locating study XML in {}...'.format(self.repository))
-        study_info = self._locate_study_xml(self.repository)
-        if not study_info[1]:
-            log.debug('Study File {} not found!')
+        study_info = self._locate_study_xml(self.repository,
+                                            pwd=self.pwd,
+                                            encoding=self.encoding)
+        if not study_info:
             raise FileNotFoundError
-        log.info('Found study {} at {}'.format(study_info[2], study_info[0]))
 
-        self.name = study_info[2]
-        self.studyRoot = study_info[0]
-
-        # add Carto3 specific attributes
-        self.studyXML = study_info[1]
+        log.info('found study XML at {}'.format(self.repository.root))
+        self.studyXML = study_info['xml']
+        self.name = study_info['name']
 
         self.units = None
         self.environment = None  # TODO: is this relevant info?
@@ -155,9 +163,8 @@ class CartoStudy(EPStudy):
         log.info('accessing study XML: {}'.format(self.studyXML))
         log.info('gathering study information...')
 
-        xml_path = join_carto_path(self.studyRoot, self.studyXML)
-
-        with open_carto_file(xml_path) as fid:
+        xml_path = self.repository.join(self.studyXML)
+        with self.repository.open(xml_path) as fid:
             root = xml.parse(fid).getroot()
 
         log.debug('reading study units')
@@ -279,11 +286,12 @@ class CartoStudy(EPStudy):
         """
 
         # do some pre-import checks
-        map_names = super().import_maps()
+        map_names = super().import_maps(map_names)
 
         # now load the maps
         for map_name in map_names:
             try:
+                log.info('importing map {}:'.format(map_name))
                 new_map = CartoMap(map_name, self.studyXML,
                                    parent=self,
                                    egm_names_from_pos=egm_names_from_pos)
@@ -315,10 +323,8 @@ class CartoStudy(EPStudy):
 
         """
 
-        visi_dir = (directory if directory
-                    else join_carto_path(self.studyRoot, 'VisiTagExport')
-                    )
-        if not carto_isdir(visi_dir):
+        visi_dir = directory if directory else 'VisiTagExport'
+        if not self.repository.is_folder(self.repository.join(visi_dir)):
             log.warning('VisiTag folder {} not found'.format(visi_dir))
             return
 
@@ -340,66 +346,74 @@ class CartoStudy(EPStudy):
         sites = []
 
         # import ablation sites from Sites.txt
-        sites_data, sites_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'Sites.txt')
-        )
-        if not sites_data.size > 0:
-            log.info('no ablation sites found in Sites.txt, trying QMODE+...')
+        file = self.repository.join(visi_dir + '/' + 'Sites.txt')
+        if not self.repository.is_file(file):
+            log.warning('VisiTag Sites.txt not found')
         else:
-            for site in sites_data:
-                sites.append(
-                    VisitagAblationSite(
-                        int(site[sites_hdr.index('SiteIndex')]),
-                        session_index=int(site[sites_hdr.index('Session')]),
-                        channel_id=int(site[sites_hdr.index('ChannelID')]),
-                        tag_index_status=int(site[sites_hdr.index('TagIndexStatus')]),
-                        coordinates=[site[sites_hdr.index('X')],
-                                     site[sites_hdr.index('Y')],
-                                     site[sites_hdr.index('Z')]],
-                        avg_force=site[sites_hdr.index('AverageForce')],
-                        fti=site[sites_hdr.index('FTI')],
-                        max_power=site[sites_hdr.index('MaxPower')],
-                        max_temp=site[sites_hdr.index('MaxTemperature')],
-                        duration=site[sites_hdr.index('DurationTime')],
-                        base_impedance=site[sites_hdr.index('BaseImpedance')],
-                        impedance_drop=site[sites_hdr.index('ImpedanceDrop')],
-                        rf_index=VisitagRFIndex(
-                            name='VisitagRFI',
-                            value=site[sites_hdr.index('RFIndex')]
+            with self.repository.open(file, mode='rb') as fid:
+                sites_data, sites_hdr = read_visitag_file(
+                    fid, encoding=self.encoding)
+
+            if not sites_data.size > 0:
+                log.info('no ablation sites found in Sites.txt, trying QMODE+...')
+            else:
+                for site in sites_data:
+                    sites.append(
+                        VisitagAblationSite(
+                            int(site[sites_hdr.index('SiteIndex')]),
+                            session_index=int(site[sites_hdr.index('Session')]),
+                            channel_id=int(site[sites_hdr.index('ChannelID')]),
+                            tag_index_status=int(site[sites_hdr.index('TagIndexStatus')]),
+                            coordinates=[site[sites_hdr.index('X')],
+                                         site[sites_hdr.index('Y')],
+                                         site[sites_hdr.index('Z')]],
+                            avg_force=site[sites_hdr.index('AverageForce')],
+                            fti=site[sites_hdr.index('FTI')],
+                            max_power=site[sites_hdr.index('MaxPower')],
+                            max_temp=site[sites_hdr.index('MaxTemperature')],
+                            duration=site[sites_hdr.index('DurationTime')],
+                            base_impedance=site[sites_hdr.index('BaseImpedance')],
+                            impedance_drop=site[sites_hdr.index('ImpedanceDrop')],
+                            rf_index=VisitagRFIndex(
+                                name='VisitagRFI',
+                                value=site[sites_hdr.index('RFIndex')]
+                            )
                         )
                     )
-                )
 
         # import ablation sites from QMODE+
-        q_sites_data, q_sites_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'Sites_QMODE+.txt')
-        )
-        if not q_sites_data.size > 0:
-            log.info('no ablation sites found in Sites_QMODE+.txt')
+        file = self.repository.join(visi_dir + '/' + 'Sites_QMODE+.txt')
+        if not self.repository.is_file(file):
+            log.warning('VisiTag Sites_QMODE+.txt not found')
         else:
-            for site in q_sites_data:
-                sites.append(
-                    VisitagAblationSite(
-                        int(site[q_sites_hdr.index('SiteIndex')]),
-                        session_index=int(site[q_sites_hdr.index('Session')]),
-                        channel_id=int(site[q_sites_hdr.index('ChannelID')]),
-                        tag_index_status=int(site[q_sites_hdr.index('TagIndexStatus')]),
-                        coordinates=[site[q_sites_hdr.index('X')],
-                                     site[q_sites_hdr.index('Y')],
-                                     site[q_sites_hdr.index('Z')]],
-                        avg_force=site[q_sites_hdr.index('AverageForce')],
-                        fti=site[q_sites_hdr.index('FTI')],
-                        max_power=site[q_sites_hdr.index('MaxPower')],
-                        max_temp=site[q_sites_hdr.index('MaxTemperature')],
-                        duration=site[q_sites_hdr.index('DurationTime')],
-                        base_impedance=site[q_sites_hdr.index('BaseImpedance')],
-                        impedance_drop=site[q_sites_hdr.index('ImpedanceDrop')],
-                        rf_index=VisitagRFIndex(
-                            name='VisitagFTI',
-                            value=site[q_sites_hdr.index('FTI')]
+            with self.repository.open(file, mode='rb') as fid:
+                q_sites_data, q_sites_hdr = read_visitag_file(
+                    fid, encoding=self.encoding)
+            if not q_sites_data.size > 0:
+                log.info('no ablation sites found in Sites_QMODE+.txt')
+            else:
+                for site in q_sites_data:
+                    sites.append(
+                        VisitagAblationSite(
+                            int(site[q_sites_hdr.index('SiteIndex')]),
+                            session_index=int(site[q_sites_hdr.index('Session')]),
+                            channel_id=int(site[q_sites_hdr.index('ChannelID')]),
+                            coordinates=[site[q_sites_hdr.index('X')],
+                                         site[q_sites_hdr.index('Y')],
+                                         site[q_sites_hdr.index('Z')]],
+                            avg_force=site[q_sites_hdr.index('AverageForce')],
+                            fti=site[q_sites_hdr.index('FTI')],
+                            max_power=site[q_sites_hdr.index('MaxPower')],
+                            max_temp=site[q_sites_hdr.index('MaxTemperature')],
+                            duration=site[q_sites_hdr.index('DurationTime')],
+                            base_impedance=site[q_sites_hdr.index('BaseImpedance')],
+                            impedance_drop=site[q_sites_hdr.index('ImpedanceDrop')],
+                            rf_index=VisitagRFIndex(
+                                name='VisitagFTI',
+                                value=site[q_sites_hdr.index('FTI')]
+                            )
                         )
                     )
-                )
 
         # check if any data was loaded
         if not len(sites) > 0:
@@ -426,10 +440,8 @@ class CartoStudy(EPStudy):
             list of VisitagAblationGrid objects.
         """
 
-        visi_dir = (directory if directory
-                    else join_carto_path(self.studyRoot, 'VisiTagExport')
-                    )
-        if not carto_isdir(visi_dir):
+        visi_dir = directory if directory else 'VisiTagExport'
+        if not self.repository.is_folder(self.repository.join(visi_dir)):
             log.warning('VisiTag folder {} not found'.format(visi_dir))
             return
 
@@ -450,10 +462,11 @@ class CartoStudy(EPStudy):
 
         # get grid data
         # first get ablation sites
-        abl_site_data, abl_site_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'AblationSites.txt'),
-            encoding=self.encoding
-        )
+        file = self.repository.join(visi_dir + '/' + 'AblationSites.txt')
+        with self.repository.open(file, mode='rb') as fid:
+            abl_site_data, abl_site_hdr = read_visitag_file(
+                fid, encoding=self.encoding
+            )
         if not abl_site_data.size > 0:
             # TODO: implement visitag tag grid import from QMODE+
             log.warning('no grid data found! Probably QMODE+ was used, '
@@ -475,22 +488,26 @@ class CartoStudy(EPStudy):
 
         # load grid data
         log.info('load grid data. This might take a while...')
-        pos_data, pos_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'PositionsData.txt'),
-            encoding=self.encoding
-        )
-        force_data, force_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'ContactForceData.txt'),
-            encoding=self.encoding
-        )
-        grid_pos_data, grid_pos_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'AllPositionInGrids.txt'),
-            encoding=self.encoding
-        )
-        grid_data, grid_hdr = read_visitag_file(
-            join_carto_path(visi_dir, 'Grids.txt'),
-            encoding=self.encoding
-        )
+        file = self.repository.join(visi_dir + '/' + 'PositionsData.txt')
+        with self.repository.open(file, mode='rb') as fid:
+            pos_data, pos_hdr = read_visitag_file(
+                fid, encoding=self.encoding
+            )
+        file = self.repository.join(visi_dir + '/' + 'ContactForceData.txt')
+        with self.repository.open(file, mode='rb') as fid:
+            force_data, force_hdr = read_visitag_file(
+                fid, encoding=self.encoding
+            )
+        file = self.repository.join(visi_dir + '/' + 'AllPositionInGrids.txt')
+        with self.repository.open(file, mode='rb') as fid:
+            grid_pos_data, grid_pos_hdr = read_visitag_file(
+                fid, encoding=self.encoding
+            )
+        file = self.repository.join(visi_dir + '/' + 'Grids.txt')
+        with self.repository.open(file, mode='rb') as fid:
+            grid_data, grid_hdr = read_visitag_file(
+                fid, encoding=self.encoding
+            )
 
         # extract parameters
         cols = get_col_idx_from_header(grid_pos_hdr, 'SiteIndex')
@@ -650,16 +667,15 @@ class CartoStudy(EPStudy):
                          'Trying to use root information from PKL'
                          .format(root))
 
-        # check if repository is valid and accessible
-        if obj.is_root_valid():
+        # try to re-set previous study root
+        if obj.set_root(obj.repository.base):
             log.info('previous study root is still valid ({})'
-                     .format(obj.studyRoot))
-            obj.set_root(os.path.abspath(obj.studyRoot))
+                     .format(obj.repository.root))
             return obj
 
         # no valid root found so far, set to pkl directory
         log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.studyRoot = os.path.abspath(filename)
+        obj.repository.update_root(os.path.dirname(os.path.abspath(filename)))
         return obj
 
     def export_additional_meshes(self, filename=''):
@@ -722,9 +738,7 @@ class CartoStudy(EPStudy):
                   .format(len(export_files)))
 
         for file in export_files:
-            f_loc = join_carto_path(self.studyRoot,
-                                    file.split('.vtk')[0] + '.mesh'
-                                    )
+            f_loc = self.repository.join(file.split('.vtk')[0] + '.mesh')
             # for ZIP roots and meshes with no name (i.e. ".mesh") path is
             # incorrect, so fix
             if isinstance(f_loc, zipfile.Path) and f_loc.at.endswith('/'):
@@ -732,7 +746,8 @@ class CartoStudy(EPStudy):
                 # folders, remove trailing "/"
                 f_loc.at = f_loc.at[:-1]
 
-            surface = read_mesh_file(f_loc)
+            with self.repository.open(f_loc, mode='rb') as fid:
+                surface = read_mesh_file(fid)
 
             export_file = os.path.join(basename, file)
             # treat meshes with no name, i.e. ".mesh"
@@ -741,7 +756,15 @@ class CartoStudy(EPStudy):
                 export_file = os.path.join(basename, 'noname' + file)
 
             # now we can export the mesh
-            surface.write_mesh_vtk(export_file)
+            f = surface.dump_mesh_carp(os.path.splitext(export_file)[0])
+            log.info('exported anatomical shell to {}'
+                     .format(f + ' (.pts, .elem)'))
+            surf_maps = surface.get_map_names()
+            surf_labels = surface.get_label_names()
+            surface.dump_mesh_vtk(export_file,
+                                  maps_to_add=surf_maps,
+                                  labels_to_add=surf_labels
+                                  )
 
     def rfi_from_visitag_grid(self):
         """
@@ -781,7 +804,7 @@ class CartoStudy(EPStudy):
             else:
                 site.add_rf_index(grid[0].calc_rfi())
 
-    def is_root_valid(self, root_dir=None):
+    def is_root_valid(self, root_dir=None, pwd=''):
         """
         Check if study root is valid. Overrides BaseClass method.
 
@@ -789,20 +812,26 @@ class CartoStudy(EPStudy):
             root_dir : str (optional)
                 path to check. If not specified, the current study root
                 is checked.
+            pwd : bytes
 
         Returns:
             bool : valid or not
 
         """
 
-        if not root_dir and carto_isfile(join_carto_path(self.studyRoot,
-                                                         self.studyXML)):
+        log.info('checking if study root{}is valid'
+                 .format(' ' + root_dir + ' ' if root_dir else ' '))
+
+        studyXML = self.repository.join(self.studyXML)
+        if not root_dir and self.repository.is_file(studyXML):
             # root saved in study is valid, nothing to do
             return True
-        elif root_dir and carto_isfile(join_carto_path(root_dir,
-                                                       self.studyXML)):
-            # specified root directory is valid
-            return True
+        elif root_dir:
+            tmp_root = Repository(root_dir, pwd=pwd)
+            if not tmp_root.root:
+                # dummy repo was not initialized properly, so root is invalid
+                return False
+            return self._locate_study_xml(tmp_root, pwd=pwd) is not None
 
         return False
 
@@ -820,71 +849,91 @@ class CartoStudy(EPStudy):
 
         """
 
+        log.info('setting study root to new directory {}'.format(root_dir))
+
         study_root = os.path.abspath(root_dir)
         if not self.is_root_valid(study_root):
             log.warning('root directory is invalid: {}'.format(study_root))
             return False
 
-        # set proper study root, i.e string or zipfile.Path
-        self.studyRoot = join_carto_path(study_root, '')
+        # study XML was found, check if it is the same study
+        root = Repository(root_dir)
+        study_info = self._locate_study_xml(root,
+                                            pwd=self.pwd,
+                                            encoding=self.encoding)
+        if not study_info:
+            # should never happen...
+            raise FileNotFoundError
+
+        log.info('found study XML at {}'.format(self.repository.root))
+        if not self.studyXML == study_info['xml']:
+            log.warning('name of study XML differs, will not change root!')
+            return False
+        if not self.name == study_info['name']:
+            log.warning('name of study differs, will not change root!')
+            return False
+
+        # change study root
+        self.repository = root
+
         return True
 
-    def _locate_study_xml(self, search_path,
+    @staticmethod
+    def _locate_study_xml(repository,
                           pwd='',
-                          regex=r'^((?!Export).)*.xml$'):
+                          regex=r'^((?!Export).)*.xml$',
+                          encoding='cp1252'):
         """
         Locate study XML in Carto repository. A file is considered valid if
         it starts with '<Study name='.
 
         Parameters:
-            search_path : str
-                folder to search recursively
+            repository : Repository
+                This is searched recursively
             pwd : bytes (optional)
                 password for protected ZIP archives.
             regex: str literal (optional)
                 regular expression used for search
+            encoding : str (optional)
+
+        Raises:
+            TypeError
 
         """
 
-        log.debug('searching for Study XML in: {}'.format(search_path))
+        log.debug('searching for Study XML in: {}'.format(repository))
 
-        study_root = None
-        study_xml = None
-        study_name = None
+        if not isinstance(repository, Repository):
+            raise TypeError
 
-        file_matches = list_carto_dir(search_path, regex=regex)
+        # search base folder
+        file_matches = repository.list_dir(repository.join(''), regex=regex)
         log.debug('found matches: {}'.format(file_matches))
 
         for f in file_matches:
-            f_loc = join_carto_path(search_path, f)
-            with open_carto_file(f_loc, mode='rb') as fid:
-                line = fid.readline().decode(encoding=self.encoding)
+            with repository.open(repository.join(f), mode='rb') as fid:
+                line = fid.readline().decode(encoding=encoding)
                 if line.startswith('<Study name='):
-                    # Study XML found!!
-                    study_root = search_path
-                    study_xml = f
-                    study_name = re.search('<Study name="(.*)">',
-                                           line).group(1)
+                    # found XML, return info
+                    return {'xml': f,
+                            'name': re.search('<Study name="(.*)">',
+                                              line).group(1)
+                            }
 
-        if not study_xml:
-            # study xml not found, try subdirectories
-            if isinstance(search_path, zipfile.Path):
-                folders = [f.name for f in search_path.iterdir()
-                           if f.is_dir()
-                           ]
-            else:
-                folders = [f for f in os.listdir(search_path)
-                           if os.path.isdir(os.path.join(search_path, f))
-                           ]
-                print('found subdirectories {}'.format(folders))
+        # study xml not found, try subdirectories
+        folders = [f for f in repository.list_dir(repository.join(''))
+                   if repository.is_folder(repository.join(f))
+                   or repository.is_archive(repository.join(f))
+                   ]
+        log.debug('found subdirectories: {}'.format(folders))
 
-            for folder in folders:
-                return self._locate_study_xml(
-                    join_carto_path(search_path, folder),
-                    pwd=pwd,
-                    regex=regex)
+        for folder in folders:
+            # update root location and start new search there
+            repository.update_root(repository.join(folder))
+            return CartoStudy._locate_study_xml(repository)
 
-        return join_carto_path(study_root, ''), study_xml, study_name
+        # XML was nowhere to be found
+        return None
 
 
 class CartoMap(EPMap):
@@ -1005,13 +1054,14 @@ class CartoMap(EPMap):
 
         """
 
-        mesh_file = join_carto_path(self.parent.studyRoot, self.surfaceFile)
-        log.info('reading Carto3 mesh {}'.format(mesh_file))
+        log.info('reading Carto3 mesh {}'.format(self.surfaceFile))
 
-        if not carto_isfile(mesh_file):
-            raise MeshFileNotFoundError(filename=mesh_file)
+        mesh_file = self.parent.repository.join(self.surfaceFile)
+        if not self.parent.repository.is_file(mesh_file):
+            raise MeshFileNotFoundError(filename=self.surfaceFile)
 
-        return read_mesh_file(mesh_file, encoding=self.parent.encoding)
+        with self.parent.repository.open(mesh_file, mode='rb') as fid:
+            return read_mesh_file(fid, encoding=self.parent.encoding)
 
     def load_points(self, study_tags=None, egm_names_from_pos=False):
         """
@@ -1040,9 +1090,9 @@ class CartoMap(EPMap):
                         'convert tag ID to tag name'.format(self.name))
 
         points = []
-        xml_path = join_carto_path(self.parent.studyRoot, self.studyXML)
 
-        with open_carto_file(xml_path) as fid:
+        xml_file = self.parent.repository.join(self.studyXML)
+        with self.parent.repository.open(xml_file, mode='rb') as fid:
             root = xml.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
@@ -1057,15 +1107,15 @@ class CartoMap(EPMap):
             return -1
         map_item = map_item[0]
 
-        all_points_file = join_carto_path(self.parent.studyRoot,
-                                          self.name + '_Points_Export.xml')
-
-        if not carto_isfile(all_points_file):
+        all_points_file = self.parent.repository.join(
+            self.name + '_Points_Export.xml'
+        )
+        if not self.parent.repository.is_file(all_points_file):
             log.warning('unable to find export overview of all points {}'
                         .format(all_points_file))
             return -1
 
-        with open_carto_file(all_points_file) as fid:
+        with self.parent.repository.open(all_points_file, mode='rb') as fid:
             root = xml.parse(fid).getroot()
 
         if not root.get('Map_Name') == self.name:
@@ -1145,7 +1195,7 @@ class CartoMap(EPMap):
         Parameters:
             directory : str
                 path to VisiTag data. If None, standard location
-                ../<studyRoot>/VisiTagExport is used
+                ../<studyRepository>/VisiTagExport is used
 
         Returns:
             None
@@ -1261,7 +1311,9 @@ class CartoMap(EPMap):
                 ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
                 ecg = ecg.T
             elif meth.lower() == 'ccf':
-                mean_ecg = np.median(data, axis=0)
+                # compare mean, median might result in all zeroes when WOI
+                # is outside QRS
+                mean_ecg = np.mean(data, axis=0)
                 # get WOI indices
                 idx_start = ref + woi[0]
                 idx_end = ref + woi[1]
@@ -1390,22 +1442,22 @@ class CartoMap(EPMap):
         log.info('loading RF and RF contact force data for map {}'
                  .format(self.name))
 
-        study_dir = self.parent.studyRoot
-
         # read RF data
         rf_abl = RFAblationParameters()
-        rf_files = [f for f in list_carto_dir(study_dir)
-                    if re.match('RF_' + self.name + '*', f)]
+        rf_files = self.parent.repository.list_dir(
+            '',
+            regex='RF_' + self.name + '*'
+        )
 
         if rf_files:
             rf_files = CartoMap._sort_rf_filenames(rf_files)
-            rf_files = [join_carto_path(study_dir, f) for f in rf_files]
+            rf_files = [self.parent.repository.join(f) for f in rf_files]
             log.debug('found {} RF files'.format(len(rf_files)))
 
             rf_columns = []
             rf_data = np.array([])
             for file in rf_files:
-                with open_carto_file(file, mode='rb') as f:
+                with self.parent.repository.open(file, mode='rb') as f:
                     header = f.readline().decode(encoding=self.parent.encoding)
                     header = re.split(r'\t+', header.rstrip('\t\r\n'))
                     if not rf_columns:
@@ -1417,10 +1469,8 @@ class CartoMap(EPMap):
                         log.info('RF file header changed in file {}'
                                  .format(file))
                         continue
-                if isinstance(file, zipfile.Path):
-                    data = np.loadtxt(file.open(), dtype=np.int32, skiprows=1)
-                else:
-                    data = np.loadtxt(file, dtype=np.int32, skiprows=1)
+
+                    data = np.loadtxt(f, dtype=np.int32, skiprows=1)
 
                 try:
                     data.shape[1]
@@ -1441,18 +1491,17 @@ class CartoMap(EPMap):
 
         # read contact force in RF
         rf_force = RFForce()
-        contact_force_rf_files = [f for f in list_carto_dir(study_dir)
-                                  if re.match('ContactForceInRF_'
-                                              + self.name
-                                              + '*',
-                                              f)]
+        contact_force_rf_files = self.parent.repository.list_dir(
+            '',
+            regex='ContactForceInRF_' + self.name + '*'
+        )
 
         contact_f_in_rf_columns = []
         contact_f_in_rf_data = np.array([])
         if contact_force_rf_files:
             contact_force_rf_files = CartoMap._sort_rf_filenames(
                 contact_force_rf_files)
-            contact_force_rf_files = [join_carto_path(study_dir, f)
+            contact_force_rf_files = [self.parent.repository.join(f)
                                       for f in contact_force_rf_files]
             log.debug('found {} RF contact force files'
                       .format(len(contact_force_rf_files)))
@@ -1463,7 +1512,7 @@ class CartoMap(EPMap):
             }
 
             for file in contact_force_rf_files:
-                with open_carto_file(file) as f:
+                with self.parent.repository.open(file, mode='rb') as f:
                     header = f.readline().decode(encoding=self.parent.encoding)
                     header = re.split(r'\t+', header.rstrip('\t\r\n'))
                     if not contact_f_in_rf_columns:
@@ -1481,11 +1530,7 @@ class CartoMap(EPMap):
                                  'file {}'.format(file))
                         continue
 
-                if isinstance(file, zipfile.Path):
-                    data = np.loadtxt(file.open(), skiprows=1, ndmin=2,
-                                      converters=conv, encoding=None)
-                else:
-                    data = np.loadtxt(file, skiprows=1, ndmin=2,
+                    data = np.loadtxt(f, skiprows=1, ndmin=2,
                                       converters=conv, encoding=None)
 
                 contact_f_in_rf_data = np.append(contact_f_in_rf_data,
@@ -1560,9 +1605,8 @@ class CartoMap(EPMap):
 
         """
 
-        xml_path = join_carto_path(self.parent.studyRoot, self.studyXML)
-
-        with open_carto_file(xml_path) as fid:
+        xml_file = self.parent.repository.join(self.studyXML)
+        with self.parent.repository.open(xml_file) as fid:
             root = xml.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
@@ -1728,10 +1772,10 @@ class CartoPoint(EPPoint):
 
         super().__init__(name, coordinates=coordinates, parent=parent)
 
-        point_file_path = join_carto_path(parent.parent.studyRoot, point_file)
-        if not carto_isfile(point_file_path):
+        file_loc = self.parent.parent.repository.join(point_file)
+        if not self.parent.parent.repository.is_file(file_loc):
             log.info('Points export file {} does not exist'
-                     .format(point_file_path))
+                     .format(point_file))
             raise FileNotFoundError
 
         # add Carto3 specific attributes
@@ -1764,9 +1808,8 @@ class CartoPoint(EPPoint):
         log.debug('Loading point data for point {}'.format(self.name))
 
         # read annotation data
-        point_xml = join_carto_path(self.parent.parent.studyRoot,
-                                    self.pointFile)
-        with open_carto_file(point_xml) as fid:
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
             root = xml.parse(fid).getroot()
 
         annotation_item = root.find('Annotations')
@@ -1797,15 +1840,25 @@ class CartoPoint(EPPoint):
 
         # get egm names
         if not egm_names_from_pos:
-            ecg_file_header = read_ecg_file_header(
-                join_carto_path(self.parent.parent.studyRoot, self.ecgFile),
-                encoding=self.parent.parent.encoding
-            )
+            ecg_file = self.parent.parent.repository.join(self.ecgFile)
+            with self.parent.parent.repository.open(ecg_file) as fid:
+                ecg_file_header = read_ecg_file_header(
+                    fid,
+                    encoding=self.parent.parent.encoding
+                )
+            if ecg_file_header['version'] == '4.1':
+                # channel names are given in pointFile for version 4.1+
+                ecg_file_header['name_bip'] = root.find('ECG').get(
+                    'BipolarMappingChannel')
+                ecg_file_header['name_uni'] = root.find('ECG').get(
+                    'UnipolarMappingChannel')
+                ecg_file_header['name_ref'] = root.find('ECG').get(
+                    'ReferenceChannel')
             egm_names = channel_names_from_ecg_header(ecg_file_header)
         else:
             egm_names = channel_names_from_pos_file(
                 self,
-                study_root=self.parent.parent.studyRoot,
+                study_root=self.parent.parent.repository.root,
                 encoding=self.parent.parent.encoding
             )
 
@@ -1863,13 +1916,11 @@ class CartoPoint(EPPoint):
                           + '_ContactForce.txt'
                           )
 
-        force_file_path = join_carto_path(self.parent.parent.studyRoot,
-                                          self.forceFile)
-        if carto_isfile(force_file_path):
-            self.forceData = read_force_file(
-                force_file_path,
-                encoding=self.parent.parent.encoding
-            )
+        if self.parent.parent.repository.is_file(self.forceFile):
+            with self.parent.parent.repository.open(self.forceFile) as fid:
+                self.forceData = read_force_file(
+                    fid, encoding=self.parent.parent.encoding
+                )
             # update base class force value
             self.force = self.forceData.force
         else:
@@ -1924,12 +1975,13 @@ class CartoPoint(EPPoint):
             log.warning('No ECG file found for point {}'.format(self.name))
             return None
 
-        ecg_path = join_carto_path(self.parent.parent.studyRoot, self.ecgFile)
+        ecg_file = self.parent.parent.repository.join(self.ecgFile)
 
         if isinstance(channel_names, str):
             channel_names = [channel_names]
 
-        ecg_header = read_ecg_file_header(ecg_path)
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_header = read_ecg_file_header(fid)
         ecg_channels = ecg_header['ecg_names']
 
         not_found = []
@@ -1948,10 +2000,11 @@ class CartoPoint(EPPoint):
         cols = [ecg_channels.index(x) for channel in channel_names
                 for x in ecg_channels if x.startswith(channel+'(')]
 
-        ecg_data = read_ecg_file(ecg_path,
-                                 column_indices=cols,
-                                 skip_rows=ecg_header['header_lines']
-                                 )
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_data = read_ecg_file(fid,
+                                     column_indices=cols,
+                                     skip_rows=ecg_header['header_lines']
+                                     )
         ecg_data *= ecg_header['gain']
 
         try:

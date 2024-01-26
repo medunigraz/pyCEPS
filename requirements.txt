@@ -4,3 +4,4 @@ scipy >= 1.11.2
 dash_bootstrap_components >= 1.4.2
 dash_vtk >= 0.0.9
 plotly >= 5.16.1
+py7zr >= 0.20.8
