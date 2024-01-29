@@ -7,6 +7,8 @@ EnSite Precision<sup>&trade;</sup> (Abbot).
 
 <img src="pyCEPS.png" width="300" height="300">
 
+## How To Cite
+
 ## Installation
 
 Python 3.9 or higher is required. Just use [pip](https://pip.pypa.io) to install:
@@ -164,8 +166,6 @@ This software is made available under the terms of the
 GNU General Public License v3.0 (GPLv3+).
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-
-## How To Cite
 
 ## Whom Do I Talk To?
 
