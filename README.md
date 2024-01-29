@@ -162,6 +162,7 @@ study.import_maps(study.mapNames)
 
 This software is made available under the terms of the
 GNU General Public License v3.0 (GPLv3+).
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 ## How To Cite
