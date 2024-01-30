@@ -30,7 +30,7 @@ jobs:
       - run: echo "Setting version number to ${COMMIT_SHA:0:7}"
       - name: Update version in setup.py
         run: >-
-          sed -i "s/{{VERSION_PLACEHOLDER}}/${COMMIT_SHA:0:7}/g" setup.py
+          sed -i "s/{{VERSION_PLACEHOLDER}}/0.0.${COMMIT_SHA:0:7}/g" setup.py
       - name: Build a binary wheel and a source tarball
         run: python3 -m build
       - name: Store the distribution packages
