@@ -26,14 +26,14 @@ jobs:
           --user
       - name: Extract Commit SHA
         run: |
-          SHA = $(echo $GITHUB_SHA | \
+          export SHA = $( echo ${{GITHUB_SHA}} | \
             sed -E 's/a/10/g' | \
             sed -E 's/b/11/g' | \
             sed -E 's/c/12/g' | \
             sed -E 's/d/13/g' | \
             sed -E 's/e/14/g' | \
             sed -E 's/f/15/g')
-          echo COMMIT_SHA=$SHA >> $GITHUB_ENV
+          echo "COMMIT_SHA=${SHA}" >> $GITHUB_ENV
       - name: Update version in setup.py
         run: >-
           sed -i "s/{{VERSION_PLACEHOLDER}}/0.rc${COMMIT_SHA:0:7}/g" setup.py
