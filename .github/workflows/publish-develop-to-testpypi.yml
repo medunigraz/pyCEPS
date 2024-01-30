@@ -15,7 +15,7 @@ jobs:
       - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
       - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.x"
       - name: Install pypa/build
@@ -27,14 +27,14 @@ jobs:
       - name: Extract Commit SHA
         shell: bash
         run: echo "COMMIT_SHA=${GITHUB_SHA}" >> ${GITHUB_ENV}
-      - run: echo "Setting version number to ${COMMIT_SHA:0:7}"
+      - run: echo "Setting version number to ${{COMMIT_SHA:0:7}}"
       - name: Update version in setup.py
         run: >-
           sed -i "s/{{VERSION_PLACEHOLDER}}/0.0.${COMMIT_SHA:0:7}/g" setup.py
       - name: Build a binary wheel and a source tarball
         run: python3 -m build
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
           path: dist/
