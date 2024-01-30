@@ -5,7 +5,7 @@ mapping data (EAM data).
 Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster) and
 EnSite Precision<sup>&trade;</sup> (Abbot).
 
-<img src="pyCEPS.png" width="300" height="300">
+<img src="https://github.com/medunigraz/pyCEPS/blob/main/pyCEPS.png?raw=true" width="300" height="300">
 
 ## How To Cite
 
@@ -69,7 +69,7 @@ site to evaluate the quality of the data set:
 ```
 > Note: This will lock the console!
 
-![Local HTML sites for data visualization](/dash_interface.jpeg "Data Visualization")
+![Local HTML sites for data visualization](https://github.com/medunigraz/pyCEPS/blob/main/dash_interface.jpeg?raw=true "Data Visualization")
 
 ## Advanced Import/Export
 To control which data, i.e. mapping procedures, are imported from an EAM data
