@@ -36,7 +36,7 @@ jobs:
             sed -E 's/c/12/g' | \
             sed -E 's/d/13/g' | \
             sed -E 's/e/14/g' | \
-            sed -E 's/f/15/g'"
+            sed -E 's/f/15/g'" >> ${GITHUB_ENV}
       - name: Update version in setup.py
         run: >-
           sed -i "s/{{VERSION_PLACEHOLDER}}/0.rc${COMMIT_SHA:0:7}/g" setup.py
