@@ -25,7 +25,6 @@ jobs:
           build
           --user
       - name: Extract Commit SHA
-        shell: bash
         run: COMMIT_SHA=${GITHUB_SHA} | \
             sed -E 's/a/10/g' | \
             sed -E 's/b/11/g' | \
