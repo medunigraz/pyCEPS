@@ -25,10 +25,12 @@ jobs:
           build
           --user
       - name: Extract Commit SHA
-        run: echo ::set-output name=SHA_SHORT::$(echo git rev-parse --short "$GITHUB_SHA")
+        shell: bash
+        run: echo "COMMIT_SHA=${GITHUB_SHA}" >> ${GITHUB_ENV}
+      - run: echo "Setting version number to ${LAST_COMMIT_SHA:0:7}
       - name: Update version in setup.py
         run: >-
-          sed -i "s/{{VERSION_PLACEHOLDER}}/${{ steps.tag.outputs.SHA_SHORT }}/g" setup.py
+          sed -i "s/{{VERSION_PLACEHOLDER}}/${LAST_COMMIT_SHA:0:7}/g" setup.py
       - name: Build a binary wheel and a source tarball
         run: python3 -m build
       - name: Store the distribution packages
