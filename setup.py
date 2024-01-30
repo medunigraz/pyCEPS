@@ -40,7 +40,7 @@ URL = 'https://github.com/me/myproject'
 EMAIL = 'robert.arnold@medunigraz.at'
 AUTHOR = 'Robert Arnold'
 REQUIRES_PYTHON = '>=3.9.0'
-VERSION = '0.0.1'
+VERSION = '{{VERSION_PLACEHOLDER}}'
 
 # What packages are optional?
 EXTRAS = {
