@@ -30,13 +30,13 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'pyceps'
+NAME = 'pyCEPS'
 DESCRIPTION = ('pyceps provides methods for importing EP studies from '
                'commercial Clinical Mapping Systems and to export data to '
                'openCARP compatible data formats.'
                )
 LICENSE = 'GPLv3+'
-URL = 'https://github.com/me/myproject'
+URL = 'https://github.com/medunigraz/pyCEPS'
 EMAIL = 'robert.arnold@medunigraz.at'
 AUTHOR = 'Robert Arnold'
 REQUIRES_PYTHON = '>=3.9.0'
