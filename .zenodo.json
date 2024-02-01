@@ -1,0 +1,43 @@
+{
+  "upload_type": "software",
+
+  "creators": [
+    {
+      "orcid": "0000-0002-0524-9812",
+      "affiliation": "Medical University of Graz",
+      "name": "Arnold, Robert"
+    },
+    {
+      "orcid": "0000-0002-1920-1377",
+      "affiliation": "Medical University of Graz",
+      "name": "Prassl, Anton J"
+    },
+    {
+      "orcid": "0000-0002-7380-6908",
+      "affiliation": "Medical University of Graz",
+      "name": "Plank, Gernot"
+    }
+  ],
+
+  "license": "GNU General Public License v3.0",
+
+  "title": "pyCEPS: A cross-platform Electroanatomic Mapping Data to Computational Model Conversion Platform for the Calibration of Digital Twin Models of Cardiac Electrophysiology",
+
+  "related_identifiers": [
+    {
+      "scheme": "doi",
+      "identifier": "",
+      "relation": "isDocumentedBy",
+      "resource_type": "publication_article"
+    }
+  ],
+
+  "keywords": [
+    "electroanatomic mapping",
+    "computational modeling",
+    "cardiac digital twins",
+    "model calibration"
+  ],
+
+  "grants": [{"id": "10.55776/I6476"}]
+}
