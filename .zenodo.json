@@ -23,21 +23,10 @@
 
   "title": "pyCEPS: A cross-platform Electroanatomic Mapping Data to Computational Model Conversion Platform for the Calibration of Digital Twin Models of Cardiac Electrophysiology",
 
-  "related_identifiers": [
-    {
-      "scheme": "doi",
-      "identifier": "",
-      "relation": "isDocumentedBy",
-      "resource_type": "publication_article"
-    }
-  ],
-
   "keywords": [
     "electroanatomic mapping",
     "computational modeling",
     "cardiac digital twins",
     "model calibration"
-  ],
-
-  "grants": [{"id": "10.55776/I6476"}]
+  ]
 }
