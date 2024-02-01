@@ -1036,7 +1036,7 @@ class CartoMap(EPMap):
             study_tags=self.parent.mappingParams.TagsTable,
             egm_names_from_pos=egm_names_from_pos)
         # build surface maps
-        self.interpolate_data('act')
+        self.interpolate_data('lat')
         self.interpolate_data('bip')
         self.interpolate_data('uni')
         self.ecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])

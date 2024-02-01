@@ -557,7 +557,7 @@ class EPMap:
         points_surf = np.stack([p.prjX for p in valid_points])
         unique_points, unique_ids = remove_redundant_points(points_surf)
 
-        if which.lower() == 'act':
+        if which.lower() == 'lat':
             data = np.asarray([p.latAnnotation - p.refAnnotation
                                for p in valid_points])
         elif which.lower() == 'bip':
