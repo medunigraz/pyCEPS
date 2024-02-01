@@ -1,5 +1,7 @@
 # pyCEPS
 
+[![DOI](https://zenodo.org/badge/747193272.svg)](https://zenodo.org/doi/10.5281/zenodo.10606340)
+
 pyCEPS provides an interface to import, visualize and translate clinical
 mapping data (EAM data).
 Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster) and
@@ -8,6 +10,25 @@ EnSite Precision<sup>&trade;</sup> (Abbot).
 <img src="https://github.com/medunigraz/pyCEPS/blob/main/pyCEPS.png?raw=true" width="300" height="300">
 
 ## How To Cite
+
+If you use this software, please consider citing:
+> @software{arnold_2024_10606341,
+  author       = {Arnold, Robert and
+                  Prassl, Anton J and
+                  Plank, Gernot},
+  title        = {{pyCEPS: A cross-platform Electroanatomic Mapping 
+                   Data to Computational Model Conversion Platform
+                   for the Calibration of Digital Twin Models of
+                   Cardiac Electrophysiology}},
+  month        = feb,
+  year         = 2024,
+  publisher    = {Zenodo},
+  version      = {0.0.1},
+  doi          = {10.5281/zenodo.10606341},
+  url          = {https://doi.org/10.5281/zenodo.10606341}
+}
+
+To cite a specific software version, visit [Zenodo](https://zenodo.org/doi/10.5281/zenodo.10606340)
 
 ## Installation
 
