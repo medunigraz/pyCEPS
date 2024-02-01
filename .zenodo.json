@@ -19,7 +19,7 @@
     }
   ],
 
-  "license": "GNU General Public License v3.0",
+  "license": "GPL-3.0-or-later",
 
   "title": "pyCEPS: A cross-platform Electroanatomic Mapping Data to Computational Model Conversion Platform for the Calibration of Digital Twin Models of Cardiac Electrophysiology",
 
