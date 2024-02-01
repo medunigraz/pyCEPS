@@ -23,9 +23,8 @@ If you use this software, please consider citing:
   month        = feb,
   year         = 2024,
   publisher    = {Zenodo},
-  version      = {0.0.1},
-  doi          = {10.5281/zenodo.10606341},
-  url          = {https://doi.org/10.5281/zenodo.10606341}
+  doi          = {10.5281/zenodo.10606340},
+  url          = {https://doi.org/10.5281/zenodo.10606340}
 }
 
 To cite a specific software version, visit [Zenodo](https://zenodo.org/doi/10.5281/zenodo.10606340)
