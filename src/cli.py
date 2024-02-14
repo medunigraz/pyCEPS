@@ -438,7 +438,7 @@ def execute_commands(args):
             export_maps.append(args.convert)
 
     if args.map and args.map in study.maps.keys():
-        export_maps = args.map
+        export_maps = [args.map]
     elif args.map and args.map in study.mapNames:
         logger.info('map {} not imported, use --import-map'.format(args.map))
     elif args.map:
