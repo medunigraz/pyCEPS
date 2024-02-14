@@ -1,2 +1,2 @@
 include README.md LICENSE.txt requirements.txt
-include src/visualize/colormaps.json
+include pyceps/visualize/colormaps.json
