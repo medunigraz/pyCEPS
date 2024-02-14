@@ -172,7 +172,7 @@ Exporting data via the CLI accesses only data common to every mapping system.
 To access the entirety of imported data, Python scripts have to be used.
 
 ```python
-from src import CartoStudy
+from pyceps import CartoStudy
 
 study = CartoStudy("path_to_repository")
 # import all available maps

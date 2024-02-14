@@ -24,9 +24,9 @@ import numpy as np
 import xml.etree.ElementTree as xml
 import scipy.spatial.distance as sp_distance
 
-from src.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
-from src.datatypes.cartotypes import PointForces
-from src.utils import get_col_idx_from_header
+from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
+from pyceps.datatypes.cartotypes import PointForces
+from pyceps.utils import get_col_idx_from_header
 
 
 logger = logging.getLogger(__name__)

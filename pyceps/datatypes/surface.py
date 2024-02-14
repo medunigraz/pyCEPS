@@ -20,7 +20,7 @@ import logging
 import numpy as np
 from collections import namedtuple
 
-from src.fileio.writer import FileWriter
+from pyceps.fileio.writer import FileWriter
 
 
 log = logging.getLogger(__name__)

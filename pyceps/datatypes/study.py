@@ -28,13 +28,13 @@ import webbrowser
 
 import py7zr
 
-from src.fileio.pathtools import Repository
-from src.datatypes.surface import SurfaceSignalMap
-from src.fileio import FileWriter
-from src.interpolation import (inverse_distance_weighting,
-                               remove_redundant_points
-                               )
-from src.visualize import get_dash_app
+from pyceps.fileio.pathtools import Repository
+from pyceps.datatypes.surface import SurfaceSignalMap
+from pyceps.fileio import FileWriter
+from pyceps.interpolation import (inverse_distance_weighting,
+                                  remove_redundant_points
+                                  )
+from pyceps.visualize import get_dash_app
 
 
 log = logging.getLogger(__name__)

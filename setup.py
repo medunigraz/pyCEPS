@@ -88,7 +88,7 @@ setup(
     # py_modules=['pyceps'],
     entry_points={
         # command = package.module:function
-        'console_scripts': ['pyceps=src.cli:run'],
+        'console_scripts': ['pyceps=pyceps.cli:run'],
     },
     install_requires=REQUIRED,
     extras_require=EXTRAS,

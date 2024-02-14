@@ -29,8 +29,8 @@ from argparse import ArgumentParser, Action
 import logging
 import tempfile
 
-from src.fileio.cartoio import CartoStudy
-from src.fileio.precisionio import PrecisionStudy
+from pyceps.fileio.cartoio import CartoStudy
+from pyceps.fileio.precisionio import PrecisionStudy
 
 
 logger = logging.getLogger('pyceps')

@@ -23,15 +23,15 @@ import gzip
 import numpy as np
 import re
 
-from src.datatypes import EPStudy, EPMap, EPPoint
-from src.datatypes.precisiontypes import DetectionAlgorithm
-from src.datatypes.signals import Trace, BodySurfaceECG
-from src.datatypes.lesions import Lesion, RFIndex
-from src.fileio.precisionutils import (read_landmark_geo, load_dxl_data,
-                                       load_ecg_data, load_lesion_data
-                                       )
-from src.exceptions import MeshFileNotFoundError
-from src.utils import console_progressbar
+from pyceps.datatypes import EPStudy, EPMap, EPPoint
+from pyceps.datatypes.precisiontypes import DetectionAlgorithm
+from pyceps.datatypes.signals import Trace, BodySurfaceECG
+from pyceps.datatypes.lesions import Lesion, RFIndex
+from pyceps.fileio.precisionutils import (read_landmark_geo, load_dxl_data,
+                                          load_ecg_data, load_lesion_data
+                                          )
+from pyceps.exceptions import MeshFileNotFoundError
+from pyceps.utils import console_progressbar
 
 
 log = logging.getLogger(__name__)

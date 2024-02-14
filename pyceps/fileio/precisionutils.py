@@ -22,12 +22,12 @@ import numpy as np
 import xml.etree.ElementTree as xml
 import re
 
-from src.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
-from src.datatypes.precisiontypes import (PrecisionSurfaceLabel,
-                                          dxlDataHeader, CFEDetection,
-                                          PrecisionLesion
-                                          )
-from src.datatypes.signals import Trace
+from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
+from pyceps.datatypes.precisiontypes import (PrecisionSurfaceLabel,
+                                             dxlDataHeader, CFEDetection,
+                                             PrecisionLesion
+                                             )
+from pyceps.datatypes.signals import Trace
 
 
 logger = logging.getLogger(__name__)
