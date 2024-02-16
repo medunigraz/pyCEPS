@@ -419,8 +419,8 @@ def execute_commands(args):
             logger.warning('a valid study root is necessary to import maps!')
         else:
             study.import_maps(study.mapNames)
-            # import lesion data
-            for map_name in import_maps:
+            # import lesion data for all loaded maps
+            for map_name in study.maps.keys():
                 study.maps[map_name].import_lesions(directory=None)
             data_changed = True
 
@@ -433,7 +433,7 @@ def execute_commands(args):
 
     if args.convert:
         if args.convert.lower() == 'all':
-            export_maps += study.mapNames
+            export_maps += study.maps.keys()
         else:
             export_maps.append(args.convert)
 
