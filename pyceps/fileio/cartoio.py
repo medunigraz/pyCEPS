@@ -2015,4 +2015,311 @@ class CartoPoint(EPPoint):
 
         return ecg_data
 
+    def _channel_names_from_ecg_header(self, ecg_header):
+        """
+        Get channel names for BIP, UNI and REF traces from file header.
 
+        This function also tries to extract the name of the second unipolar
+        channel from the bipolar channel name.
+
+        Parameters:
+            ecg_header : dict
+                header info returned from read_ecg_file_header()
+
+        Returns:
+            dict : channel names
+                keys: 'bip', 'uni1', 'uni2', 'ref'
+        """
+
+        log.debug('extracting channel names from ECG header for point {}'
+                  .format(self.name))
+
+        # MEC connector names have different naming convention
+        if ecg_header['name_bip'].startswith('MCC'):
+            log.warning('point {} was recorded with MEC connector, unipolar '
+                        'channel names might be wrong!'
+                        .format(self.name))
+            uni_name1 = ecg_header['name_uni']
+            # TODO: fix second unipolar channel name for MCC Ablation
+            uni_name2 = uni_name1
+
+        else:
+            # get unipolar names from bipolar electrode names
+            try:
+                connector, channels = ecg_header['name_bip'].split('_')
+                channel_num = channels.split('-')
+                uni_name1 = connector + '_' + channel_num[0]
+                uni_name2 = connector + '_' + channel_num[1]
+            except ValueError:
+                # some connectors don't add the connector name at beginning
+                channel_names = ecg_header['name_bip'].split('-')
+                uni_name1 = channel_names[0]
+                uni_name2 = channel_names[1]
+
+        # compare extracted names with header info
+        if not uni_name1 == ecg_header['name_uni']:
+            log.warning('extracted unipolar EGM channel name does not match '
+                        'ECG header info! Using header info!')
+            uni_name1 = ecg_header['name_uni']
+            uni_name2 = uni_name1
+
+        return {'bip': ecg_header['name_bip'],
+                'uni1': uni_name1,
+                'uni2': uni_name2,
+                'ref': ecg_header['name_ref']
+                }
+
+    def _channel_names_from_pos_file(self, egm_names, encoding='cp1252'):
+        """
+        Get channel names for BIP, UNI and REF traces from electrode positions.
+
+        Extracted names are compared to EGM names in CARTO point ECG file. If
+        discrepancies are found, the names from the ECG files are used.
+
+        Parameters:
+            encoding :
+
+        Returns:
+            bip_name : string
+                bipolar channel name
+            uni_name : list of string
+                unipolar channel names
+            ref_name : string
+                reference channel name
+            uni_coordinates : ndarray (3, 2)
+                cartesian coordinates of the unipolar recording electrodes
+        """
+
+        log.debug('extracting channel names from position files for point {}'
+                  .format(self.name))
+
+        # read points XML file
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
+            root = xml.parse(fid).getroot()
+
+        # find which electrode has collected the point
+        position_files = []
+        for connector in root.find('Positions').findall('Connector'):
+            connector_file = list(connector.attrib.values())[0]
+            if connector_file.lower().endswith(
+                    'ectrode_positions_onannotation.txt'):
+                position_files.append(connector_file)
+
+        bipName, uniName, xyz_2 = self._find_electrode_at_pos(self.recX,
+                                                              position_files,
+                                                              encoding=encoding
+                                                              )
+        uniCoordinates = np.stack((self.recX, xyz_2), axis=-1)
+
+        # now check the name of the electrode identified above by
+        # comparing with the ECG_Export file
+        if not egm_names['bip'] == bipName:
+            log.warning('Conflict: bipolar electrode name {} from position '
+                        'file does not match electrode name {} in ECG file!\n'
+                        'Using name from ECG file for point {}.'
+                        .format(bipName, egm_names['bip'], self.name)
+                        )
+            bipName = egm_names['bip']
+
+        if not egm_names['uni1'] == uniName[0]:
+            log.warning('Conflict: unipolar electrode name {} from position '
+                        'file does not match electrode name {} in ECG file!\n'
+                        'Using name from ECG file for point {}.'
+                        .format(uniName[0], egm_names['uni1'], self.name)
+                        )
+            uniName[0] = egm_names['uni1']
+            uniName[1] = egm_names['uni2']
+
+        names = {'bip': bipName,
+                 'uni1': uniName[0],
+                 'uni2': uniName[1],
+                 'ref': egm_names['uni1']
+                 }
+
+        return names, uniCoordinates
+
+    def _find_electrode_at_pos(self,
+                               point_xyz,
+                               position_files,
+                               encoding='cp1252'):
+        """
+        Find electrode that recorded Point at xyz.
+
+        This function also tries to identify the name and coordinates of the
+        second unipolar channel which made the bipolar recording.
+
+        Parameters:
+            point_xyz : ndarray (3, 1)
+                coordinates of the point
+            position_files : list of string
+                path to the position files
+            encoding :
+
+        Returns:
+             egm_name_bip : string
+                name of the bipolar channel
+            egm_name_uni : list of string
+                names of the unipolar channels
+            xyz_2 : ndarray (3, 1)
+                coordinates of the second unipolar channel
+        """
+
+        log.debug('find electrode that recorded point at {}'
+                  .format(point_xyz))
+
+        egm_name_bip = ''
+        egm_name_uni = ['', '']
+        xyz_2 = np.full((3, 1), np.nan, dtype=np.float32)
+
+        electrode_cols = ['Electrode#', 'Time', 'X', 'Y', 'Z']
+        sensor_cols = ['Sensor#', 'Time', 'X', 'Y', 'Z']
+
+        min_dist = np.inf
+        closest_file = []
+        closest_electrode = []
+
+        for filename in position_files:
+            pos_file = self.parent.parent.repository.join(filename)
+            if not self.parent.parent.repository.is_file(pos_file):
+                log.warning('position file {} for point {} not found'
+                            .format(filename, self.name))
+                continue
+
+            with self.parent.parent.repository.open(pos_file) as f:
+                # reader file format info
+                line = f.readline().decode(encoding=encoding)
+                if not line.rstrip().lower().endswith('_positions_2.0'):
+                    log.info(
+                        'version number of position file {} is not supported'
+                        .format(filename))
+                    continue
+                # read header info
+                line = f.readline().decode(encoding=encoding)
+                columns = re.split(r'\t+', line.rstrip('\t\r\n'))
+                if not columns == electrode_cols and not columns == sensor_cols:
+                    log.info('unexpected column names in position file {}'
+                             .format(filename))
+                    continue
+
+                # read position data
+                data = np.loadtxt(f,
+                                  dtype=np.float32,
+                                  skiprows=0,
+                                  )
+
+            # extract useful information
+            xyz = data[:, [2, 3, 4]]
+            electrode_idx = data[:, 0].astype(int)
+
+            if 'MEC' in filename:
+                # positions of last 3 electrodes is always identical
+                xyz = xyz[:-3]
+                electrode_idx = electrode_idx[:-3]
+
+            dist = sp_distance.cdist(xyz, np.array([point_xyz])).flatten()
+            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
+
+            if idx_closest.size > 1:
+                log.debug('found multiple electrodes with same minimum '
+                          'distance in file {}. Trying next file...'
+                          .format(filename))
+                continue
+
+            idx_closest = idx_closest[0]
+            if dist[idx_closest] < min_dist:
+                min_dist = dist[idx_closest]
+                closest_electrode = self._translate_connector_index(
+                    electrode_idx,
+                    idx_closest,
+                    filename)
+                closest_file = os.path.basename(filename)
+                try:
+                    xyz_2 = xyz[idx_closest + 1, :]
+                except IndexError:
+                    # TODO: point was recorded from last electrode,
+                    #  so second unipolar electrogram is the one BEFORE?
+                    log.warning('coordinates for second unipolar channel: '
+                                'index out of range! This should not have '
+                                'happened...')
+                    # xyz_2 = xyz[idx_closest-1, :]
+
+        if not closest_file or not closest_electrode:
+            log.warning('unable to find which electrode recorded'
+                        'point {} at {}!'
+                        .format(self.name, point_xyz))
+            return '', ['', ''], np.full((3, 1), np.nan, dtype=np.float32)
+
+        # now we have to translate the filename into the egm name that gives us
+        # the correct egm in the ECG_Export file.
+        identifier = ['CS_CONNECTOR',
+                      'MAGNETIC_20_POLE_A_CONNECTOR',
+                      'MAGNETIC_20_POLE_B_CONNECTOR',
+                      'NAVISTAR_CONNECTOR',
+                      'MEC']
+        translation = ['CS',
+                       '20A_',
+                       '20B_',
+                       'M',
+                       'MCC Abl BiPolar']
+
+        idx_identifier = [identifier.index(x) for x in identifier
+                          if x in closest_file][0]
+        egm_name = translation[idx_identifier]
+
+        if egm_name == 'MCC Abl BiPolar':
+            egm_name_bip = egm_name + ' {}'.format(closest_electrode)
+            egm_name_uni[0] = 'M{}'.format(closest_electrode)
+            egm_name_uni[1] = egm_name_uni[0]
+
+        elif egm_name == '20A_' or egm_name == '20B_':
+            egm_name_bip = '{}{}-{}'.format(egm_name,
+                                            closest_electrode,
+                                            closest_electrode + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, closest_electrode)
+            egm_name_uni[1] = '{}{}'.format(egm_name, closest_electrode + 1)
+            # TODO: why is this done??
+            if egm_name_bip == '20B_7-8':
+                egm_name_bip = '20B_9-8'
+
+        else:
+            egm_name_bip = '{}{}-{}{}'.format(egm_name,
+                                              closest_electrode,
+                                              egm_name,
+                                              closest_electrode + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, closest_electrode)
+            egm_name_uni[1] = '{}{}'.format(egm_name, closest_electrode + 1)
+
+        return egm_name_bip, egm_name_uni, xyz_2
+
+    @staticmethod
+    def _translate_connector_index(index_list, index, file_name):
+        """
+        Translate connector index in electrode position file to channel number
+        in ecg file.
+        """
+
+        CONNECTORS = ['MAGNETIC_20_POLE_A_CONNECTOR',
+                      'MAGNETIC_20_POLE_B_CONNECTOR']
+        LASSO_INDEXING = [1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+                          1, 2, 3, 4]
+        PENTA_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                          14, 15, 16, 17, 18, 19, 20, 21, 22]
+        # TODO: implement correct indexing for CS catheter
+        CS_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+        closest_electrode = -1
+
+        if any([x in file_name for x in CONNECTORS]):
+            if np.array_equal(index_list, LASSO_INDEXING):
+                # two electrodes offset and 1-based numbering
+                closest_electrode = index - 2 + 1
+            elif np.array_equal(index_list, PENTA_INDEXING):
+                closest_electrode = index_list[index]
+            else:
+                # some other catheter was connected, try best guess
+                closest_electrode = index_list[index]
+        else:
+            closest_electrode = index_list[index]
+
+        return closest_electrode
