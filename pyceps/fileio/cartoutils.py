@@ -417,35 +417,35 @@ def read_ecg_file_header(fid, encoding='cp1252'):
 
     # read mapping channels
     if file_header['version'] == '4.0':
-            # channel names are included up to version 4.0
+        # channel names are included up to version 4.0
+        line = fid.readline().decode(encoding=encoding).rstrip()
+        if not line.lower().startswith('unipolar'):
+            log.warning('unexpected header line (3) in Carto3 ECG file, '
+                        'trying next'
+                        )
             line = fid.readline().decode(encoding=encoding).rstrip()
             if not line.lower().startswith('unipolar'):
-                log.warning('unexpected header line (3) in Carto3 ECG file, trying '
-                    'next'
-                            )
-                line = fid.readline().decode(encoding=encoding).rstrip()
-                if not line.lower().startswith('unipolar'):
-                    log.info('unexpected file header in Carto3 ECG file')
-                    return file_header
-                file_header['header_lines'] = file_header['header_lines'] + 1
+                log.info('unexpected file header in Carto3 ECG file')
+                return file_header
             file_header['header_lines'] = file_header['header_lines'] + 1
+        file_header['header_lines'] = file_header['header_lines'] + 1
 
-            uni_token = 'unipolar mapping channel='
-            bip_token = 'bipolar mapping channel='
-            ref_token = 'reference channel='
+        uni_token = 'unipolar mapping channel='
+        bip_token = 'bipolar mapping channel='
+        ref_token = 'reference channel='
 
-            str_start = line.lower().find(uni_token) + len(uni_token)
-            str_end = line.lower().find(bip_token)
-            file_header['name_uni'] = line[str_start:str_end].strip()
+        str_start = line.lower().find(uni_token) + len(uni_token)
+        str_end = line.lower().find(bip_token)
+        file_header['name_uni'] = line[str_start:str_end].strip()
 
-            str_start = line.lower().find(bip_token) + len(bip_token)
-            str_end = line.lower().find(ref_token)
-            file_header['name_bip'] = line[str_start:str_end].strip()
+        str_start = line.lower().find(bip_token) + len(bip_token)
+        str_end = line.lower().find(ref_token)
+        file_header['name_bip'] = line[str_start:str_end].strip()
 
-            str_start = line.lower().find(ref_token) + len(ref_token)
-            file_header['name_ref'] = line[line.lower().find(ref_token)
-                                           + len(ref_token):].split()[0].strip()
-            # TODO: compare this to MATLAB version, i.e. uni2 name??
+        str_start = line.lower().find(ref_token) + len(ref_token)
+        file_header['name_ref'] = line[line.lower().find(ref_token)
+                                       + len(ref_token):].split()[0].strip()
+        # TODO: compare this to MATLAB version, i.e. uni2 name??
 
     # read column names
     line = fid.readline().decode(encoding=encoding).rstrip()
