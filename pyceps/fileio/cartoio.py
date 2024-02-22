@@ -1838,62 +1838,47 @@ class CartoPoint(EPPoint):
 
         self.ecgFile = root.find('ECG').get('FileName')
 
-        # get egm names
-        if not egm_names_from_pos:
-            ecg_file = self.parent.parent.repository.join(self.ecgFile)
-            with self.parent.parent.repository.open(ecg_file) as fid:
-                ecg_file_header = read_ecg_file_header(
-                    fid,
-                    encoding=self.parent.parent.encoding
-                )
-            if ecg_file_header['version'] == '4.1':
-                # channel names are given in pointFile for version 4.1+
-                ecg_file_header['name_bip'] = root.find('ECG').get(
-                    'BipolarMappingChannel')
-                ecg_file_header['name_uni'] = root.find('ECG').get(
-                    'UnipolarMappingChannel')
-                ecg_file_header['name_ref'] = root.find('ECG').get(
-                    'ReferenceChannel')
-            egm_names = channel_names_from_ecg_header(ecg_file_header)
-        else:
-            egm_names = channel_names_from_pos_file(
-                self,
-                study_root=self.parent.parent.repository.root,
+        # get egm names from ECG file
+        ecg_file = self.parent.parent.repository.join(self.ecgFile)
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_file_header = read_ecg_file_header(
+                fid,
                 encoding=self.parent.parent.encoding
             )
+        if ecg_file_header['version'] == '4.1':
+            # channel names are given in pointFile for version 4.1+
+            ecg_file_header['name_bip'] = root.find('ECG').get(
+                'BipolarMappingChannel')
+            ecg_file_header['name_uni'] = root.find('ECG').get(
+                'UnipolarMappingChannel')
+            ecg_file_header['name_ref'] = root.find('ECG').get(
+                'ReferenceChannel')
+        egm_names = self._channel_names_from_ecg_header(ecg_file_header)
 
-        bipName = egm_names[0]
-        uniName = egm_names[1]
-        refName = egm_names[2]
-        try:
-            self.uniCoordinates = egm_names[3]
-        except IndexError:
-            log.debug('no coordinates for second unipolar channel found')
-            self.uniCoordinates = np.stack((self.recX,
-                                            np.full(3, np.nan, dtype=float)
-                                            ),
-                                           axis=-1)
-
-        # TODO: is exporting of 2 unipolar channel names really
-        #  necessary?? Why is this done??
+        if egm_names_from_pos:
+            egm_names, uniCoordinates = self._channel_names_from_pos_file(
+                egm_names,
+                encoding=self.parent.parent.encoding
+            )
+            self.uniX = uniCoordinates
 
         # now we can import the electrograms for this point
-        egm_data = self.import_ecg([bipName,
-                                    uniName[0],
-                                    uniName[1],
-                                    refName])
+        egm_data = self.import_ecg([egm_names['bip'],
+                                    egm_names['uni1'],
+                                    egm_names['uni2'],
+                                    egm_names['ref']])
         # build egm traces
-        self.egmBip = Trace(name=bipName,
+        self.egmBip = Trace(name=egm_names['bip'],
                             data=egm_data[:, 0].astype(np.float32),
                             fs=1000.0)
-        self.egmUni = [Trace(name=uniName[0],
+        self.egmUni = [Trace(name=egm_names['uni1'],
                              data=egm_data[:, 1].astype(np.float32),
                              fs=1000.0),
-                       Trace(name=uniName[1],
+                       Trace(name=egm_names['uni2'],
                              data=egm_data[:, 2].astype(np.float32),
                              fs=1000.0)
                        ]
-        self.egmRef = Trace(name=refName,
+        self.egmRef = Trace(name=egm_names['ref'],
                             data=egm_data[:, 3].astype(np.float32),
                             fs=1000.0)
 
