@@ -24,19 +24,15 @@ import xml.etree.ElementTree as xml
 import numpy as np
 import gzip
 import pickle
+import scipy.spatial.distance as sp_distance
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes import EPStudy, EPMap, EPPoint, Mesh
 from pyceps.fileio import FileWriter
-from pyceps.fileio.cartoutils import (# open_carto_file, join_carto_path,
-                                       # list_carto_dir, carto_isfile,
-    # carto_isdir,
-                                       read_mesh_file,
-                                       read_ecg_file_header, read_ecg_file,
-                                       channel_names_from_ecg_header,
-                                       channel_names_from_pos_file,
-                                       read_force_file,
-                                       read_visitag_file)
+from pyceps.fileio.cartoutils import (read_mesh_file,
+                                      read_ecg_file_header, read_ecg_file,
+                                      read_force_file,
+                                      read_visitag_file)
 from pyceps.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
                                          SurfaceErrorTable,
                                          PasoTable, CFAEColoringTable, Tag,

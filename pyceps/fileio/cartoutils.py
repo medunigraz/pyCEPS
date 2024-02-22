@@ -17,16 +17,10 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
-import zipfile
-import re
 import numpy as np
-import xml.etree.ElementTree as xml
-import scipy.spatial.distance as sp_distance
 
 from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
 from pyceps.datatypes.cartotypes import PointForces
-from pyceps.utils import get_col_idx_from_header
 
 
 logger = logging.getLogger(__name__)
