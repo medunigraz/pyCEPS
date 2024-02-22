@@ -1716,7 +1716,7 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniCoordinates : ndarray (3, 2)
+        uniX : ndarray (3, 2)
             cartesian coordinates of the unipolar recording electrodes
             NOTE: coordinates of second unipolar electrode are NaN if
             unipolar channel names were read from ECG file only
@@ -1784,7 +1784,7 @@ class CartoPoint(EPPoint):
         self.woi = np.array([])
         self.tags = tags
         self.ecgFile = None
-        self.uniCoordinates = None
+        self.uniX = np.full((3, 2), np.nan, dtype=float)
         self.forceFile = None
         self.forceData = None
 
