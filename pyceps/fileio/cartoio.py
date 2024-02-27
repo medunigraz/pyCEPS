@@ -2135,17 +2135,13 @@ class CartoPoint(EPPoint):
         discrepancies are found, the names from the ECG files are used.
 
         Parameters:
+            egm_names : dict
+                names extracted from ECG file for comparison
             encoding :
 
         Returns:
-            bip_name : string
-                bipolar channel name
-            uni_name : list of string
-                unipolar channel names
-            ref_name : string
-                reference channel name
-            uni_coordinates : ndarray (3, 2)
-                cartesian coordinates of the unipolar recording electrodes
+            dict : channel names
+                keys: 'bip', 'uni1', 'uni2', 'ref'
         """
 
         log.debug('extracting channel names from position files for point {}'
@@ -2156,18 +2152,18 @@ class CartoPoint(EPPoint):
         with self.parent.parent.repository.open(point_file) as fid:
             root = xml.parse(fid).getroot()
 
-        # find which electrode has collected the point
+        # get position files
         position_files = []
         for connector in root.find('Positions').findall('Connector'):
             connector_file = list(connector.attrib.values())[0]
-            if connector_file.lower().endswith(
-                    'ectrode_positions_onannotation.txt'):
+            if connector_file.lower().endswith('ectrode_positions_onannotation.txt'):
                 position_files.append(connector_file)
 
-        bipName, uniName, xyz_2 = self._find_electrode_at_pos(self.recX,
-                                                              position_files,
-                                                              encoding=encoding
-                                                              )
+        bipName, uniName, xyz_2 = self._find_electrode_at_pos(
+            self.recX,
+            position_files,
+            encoding=encoding
+        )
         uniCoordinates = np.stack((self.recX, xyz_2), axis=-1)
 
         # now check the name of the electrode identified above by
@@ -2230,12 +2226,7 @@ class CartoPoint(EPPoint):
         egm_name_uni = ['', '']
         xyz_2 = np.full((3, 1), np.nan, dtype=np.float32)
 
-        electrode_cols = ['Electrode#', 'Time', 'X', 'Y', 'Z']
-        sensor_cols = ['Sensor#', 'Time', 'X', 'Y', 'Z']
-
-        min_dist = np.inf
-        closest_file = []
-        closest_electrode = []
+        channel_number = np.nan
 
         for filename in position_files:
             pos_file = self.parent.parent.repository.join(filename)
@@ -2244,69 +2235,117 @@ class CartoPoint(EPPoint):
                             .format(filename, self.name))
                 continue
 
-            with self.parent.parent.repository.open(pos_file) as f:
-                # reader file format info
-                line = f.readline().decode(encoding=encoding)
-                if not line.rstrip().lower().endswith('_positions_2.0'):
-                    log.info(
-                        'version number of position file {} is not supported'
-                        .format(filename))
-                    continue
-                # read header info
-                line = f.readline().decode(encoding=encoding)
-                columns = re.split(r'\t+', line.rstrip('\t\r\n'))
-                if not columns == electrode_cols and not columns == sensor_cols:
-                    log.info('unexpected column names in position file {}'
-                             .format(filename))
-                    continue
+            with self.parent.parent.repository.open(pos_file) as fid:
+                idx, time, xyz = read_electrode_pos_file(fid)
 
-                # read position data
-                data = np.loadtxt(f,
-                                  dtype=np.float32,
-                                  skiprows=0,
-                                  )
+            # calculate range of electrode positions and add last index
+            lim = np.append(np.where(idx[:-1] != idx[1:])[0], len(idx) - 1)
 
-            # extract useful information
-            xyz = data[:, [2, 3, 4]]
-            electrode_idx = data[:, 0].astype(int)
-
-            if 'MEC' in filename:
-                # positions of last 3 electrodes is always identical
-                xyz = xyz[:-3]
-                electrode_idx = electrode_idx[:-3]
-
+            # find electrode with the closest distance
             dist = sp_distance.cdist(xyz, np.array([point_xyz])).flatten()
             idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
-
-            if idx_closest.size > 1:
-                log.debug('found multiple electrodes with same minimum '
+            if idx_closest.size != 1:
+                log.debug('found no or multiple electrodes with same minimum '
                           'distance in file {}. Trying next file...'
                           .format(filename))
                 continue
-
             idx_closest = idx_closest[0]
-            if dist[idx_closest] < min_dist:
-                min_dist = dist[idx_closest]
-                closest_electrode = self._translate_connector_index(
-                    electrode_idx,
-                    idx_closest,
-                    filename)
-                closest_file = os.path.basename(filename)
-                try:
-                    xyz_2 = xyz[idx_closest + 1, :]
-                except IndexError:
-                    # TODO: point was recorded from last electrode,
-                    #  so second unipolar electrogram is the one BEFORE?
-                    log.warning('coordinates for second unipolar channel: '
-                                'index out of range! This should not have '
-                                'happened...')
-                    # xyz_2 = xyz[idx_closest-1, :]
+            if dist[idx_closest] > 0:
+                # position must be exact match
+                continue
 
-        if not closest_file or not closest_electrode:
-            log.warning('unable to find which electrode recorded'
+            # get channel list and index for reduced positions
+            electrode_idx = lim.searchsorted(idx_closest, 'left')
+            channel_list = idx[lim]
+
+            # find second unipolar channel recorded at same time in next
+            # position block
+            time_closest = time[idx_closest]
+            # get block limits
+            try:
+                block_start = lim[electrode_idx] + 1
+                idx_end = lim[electrode_idx+1] + 1
+            except IndexError:
+                log.warning('point was recorded with last electrode, unable '
+                            'to get second channel!')
+                continue
+
+            block_end = idx_end if (idx_end < time.shape[0]) else None
+            idx_time = np.argwhere(time[block_start:block_end] == time_closest).flatten()
+            if idx_time.size != 1:
+                log.debug('found no matching time stamp for second unipolar '
+                          'channel in file {}'
+                          .format(filename))
+            else:
+                xyz_2 = xyz[idx_time[0] + lim[electrode_idx] + 1, :]
+
+            # translate connector index to channel number
+            try:
+                egm_name_bip, egm_name_uni = self._translate_connector_index(
+                    channel_list,
+                    electrode_idx,
+                    filename
+                )
+                # if no error, update minimum distance and file
+                min_dist = dist[idx_closest]
+            except IndexError:
+                # channel indexing does not match used connector, sometimes
+                # channels are missing in position on annotation file
+
+                if '_OnAnnotation' not in filename:
+                    # already working on extended files
+                    log.debug('unable to get channel name from extended '
+                              'position file {}'.format(filename))
+                    break
+
+                log.warning('channel indexing does not match connector! '
+                            'Trying to find in extensive position file(s)')
+
+                # get filename of extended position file
+                ext_filename = filename.replace('_OnAnnotation', '')
+                egm_name_bip, egm_name_uni, xyz_2 = (
+                    self._find_electrode_at_pos(self.recX,
+                                                [ext_filename],
+                                                encoding=encoding)
+                )
+
+        if not egm_name_bip or not any(egm_name_uni):
+            log.warning('unable to find which electrode recorded '
                         'point {} at {}!'
                         .format(self.name, point_xyz))
-            return '', ['', ''], np.full((3, 1), np.nan, dtype=np.float32)
+            return ('',
+                    ['', ''],
+                    np.full((3, ), np.nan, dtype=np.float32)
+                    )
+
+        return egm_name_bip, egm_name_uni, xyz_2
+
+    @staticmethod
+    def _translate_connector_index(channel_list, electrode_index, filename):
+        """
+        Translate connector index in electrode position file to channel name
+        in ecg file.
+
+        Raises:
+            IndexError : If channel indexing does not match a known connector.
+
+        Returns:
+             egm_name_bip : string
+                name of the bipolar channel
+            egm_name_uni : list of string
+                names of the unipolar channels
+
+        """
+
+        egm_name_bip = ''
+        egm_name_uni = ['', '']
+
+        LASSO_INDEXING = [1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+                          1, 2, 3, 4]
+        PENTA_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                          14, 15, 16, 17, 18, 19, 20, 21, 22]
+        # TODO: implement correct indexing for CS catheter
+        CS_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
         # now we have to translate the filename into the egm name that gives us
         # the correct egm in the ECG_Export file.
@@ -2322,62 +2361,46 @@ class CartoPoint(EPPoint):
                        'MCC Abl BiPolar']
 
         idx_identifier = [identifier.index(x) for x in identifier
-                          if x in closest_file][0]
+                          if x in filename][0]
         egm_name = translation[idx_identifier]
 
         if egm_name == 'MCC Abl BiPolar':
-            egm_name_bip = egm_name + ' {}'.format(closest_electrode)
-            egm_name_uni[0] = 'M{}'.format(closest_electrode)
+            electrode_number = channel_list[electrode_index]
+            egm_name_bip = egm_name + ' {}'.format(electrode_number)
+            egm_name_uni[0] = 'M{}'.format(electrode_number)
+            # TODO: what is the second unipolar channel for this?
             egm_name_uni[1] = egm_name_uni[0]
 
         elif egm_name == '20A_' or egm_name == '20B_':
+            # check which catheter was used
+            if np.array_equal(channel_list, LASSO_INDEXING):
+                # two electrodes offset and 1-based numbering
+                electrode_number = electrode_index - 2 + 1
+            elif np.array_equal(channel_list, PENTA_INDEXING):
+                electrode_number = channel_list[electrode_index]
+            else:
+                raise IndexError('channel indexing does not match specified '
+                                 'connector!')
+
+            # build channel name
             egm_name_bip = '{}{}-{}'.format(egm_name,
-                                            closest_electrode,
-                                            closest_electrode + 1)
-            egm_name_uni[0] = '{}{}'.format(egm_name, closest_electrode)
-            egm_name_uni[1] = '{}{}'.format(egm_name, closest_electrode + 1)
+                                            electrode_number,
+                                            electrode_number + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
+            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
             # TODO: why is this done??
             if egm_name_bip == '20B_7-8':
                 egm_name_bip = '20B_9-8'
 
         else:
+            log.warning('unknown connector! Trying best guess for channel '
+                        'name!')
+            electrode_number = channel_list[electrode_index]
             egm_name_bip = '{}{}-{}{}'.format(egm_name,
-                                              closest_electrode,
+                                              electrode_number,
                                               egm_name,
-                                              closest_electrode + 1)
-            egm_name_uni[0] = '{}{}'.format(egm_name, closest_electrode)
-            egm_name_uni[1] = '{}{}'.format(egm_name, closest_electrode + 1)
+                                              electrode_number + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
+            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
 
-        return egm_name_bip, egm_name_uni, xyz_2
-
-    @staticmethod
-    def _translate_connector_index(index_list, index, file_name):
-        """
-        Translate connector index in electrode position file to channel number
-        in ecg file.
-        """
-
-        CONNECTORS = ['MAGNETIC_20_POLE_A_CONNECTOR',
-                      'MAGNETIC_20_POLE_B_CONNECTOR']
-        LASSO_INDEXING = [1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-                          1, 2, 3, 4]
-        PENTA_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                          14, 15, 16, 17, 18, 19, 20, 21, 22]
-        # TODO: implement correct indexing for CS catheter
-        CS_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
-        closest_electrode = -1
-
-        if any([x in file_name for x in CONNECTORS]):
-            if np.array_equal(index_list, LASSO_INDEXING):
-                # two electrodes offset and 1-based numbering
-                closest_electrode = index - 2 + 1
-            elif np.array_equal(index_list, PENTA_INDEXING):
-                closest_electrode = index_list[index]
-            else:
-                # some other catheter was connected, try best guess
-                closest_electrode = index_list[index]
-        else:
-            closest_electrode = index_list[index]
-
-        return closest_electrode
+        return egm_name_bip, egm_name_uni
