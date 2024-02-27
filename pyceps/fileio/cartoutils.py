@@ -632,3 +632,52 @@ def read_visitag_file(fid, encoding='cp1252'):
                       )
 
     return data, col_headers
+
+
+def read_electrode_pos_file(fid, encoding='cp1252'):
+    """
+    Reads a Carto3 electrode position file.
+
+    Parameters:
+        fid : file-like
+            path to electrode position file
+        encoding :
+
+    Raises:
+        TypeError : If version is not supported
+
+    Returns:
+        ndarray (n_pos, 1) : electrode index
+        ndarray (n_pos, 1) : recording time stamp
+        ndarray (n_pos, 3) : electrode coordinates
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.read_electrode_pos_file'.format(__name__))
+
+    # reader file format info
+    line = fid.readline().decode(encoding=encoding)
+    if not line.rstrip().lower().endswith('_positions_2.0'):
+        raise TypeError('version number of position file {} is not supported'
+                        .format(line))
+
+    # read position data, skip header line
+    data = np.loadtxt(fid,
+                      dtype=np.float32,
+                      skiprows=1,
+                      )
+
+    idx = data[:, 0].astype(int)
+    time = data[:, 1].astype(int)
+    xyz = data[:, [2, 3, 4]]
+
+    # get range of electrode positions
+    lim = np.where(idx[:-1] != idx[1:])[0]
+
+    # positions of last 3 electrodes for MEC is always identical to first
+    if 'MEC' in fid.name:
+        idx = idx[:lim[-2]]
+        time = time[:lim[-2]]
+        xyz = xyz[:lim[-2], :]
+
+    return idx, time, xyz
