@@ -1851,6 +1851,9 @@ class CartoPoint(EPPoint):
                 'ReferenceChannel')
         egm_names = self._channel_names_from_ecg_header(ecg_file_header)
 
+        # get coordinates of second unipolar channel
+        self.uniX = self._get_2nd_uni_x(encoding=self.parent.parent.encoding)
+
         if egm_names_from_pos:
             egm_names, uniCoordinates = self._channel_names_from_pos_file(
                 egm_names,
@@ -2049,6 +2052,80 @@ class CartoPoint(EPPoint):
                 'uni2': uni_name2,
                 'ref': ecg_header['name_ref']
                 }
+
+    def _get_2nd_uni_x(self, encoding='cp1252'):
+        """
+        Get coordinates for 2nd unipolar channel from position file(s).
+
+        Searches for recording coordinates in position file(s) and extracts
+        coordinates of the subsequent channel. This should be the correct
+        second unipolar channel for bipolar recordings.
+
+        Note: Method _channel_names_from_pos_file is more elaborate but
+        fails often for missing channel positions in position files!
+
+        Parameters:
+            encoding:
+
+        Returns:
+            ndarray(3, 1)
+                coordinates of the second unipolar channel
+
+        """
+
+        xyz_2 = np.full((3, 1), np.nan, dtype=np.float32)
+
+        log.debug('get position of 2nd unipolar channel')
+
+        # read points XML file
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
+            root = xml.parse(fid).getroot()
+
+        # get position files
+        position_files = []
+        for connector in root.find('Positions').findall('Connector'):
+            connector_file = list(connector.attrib.values())[0]
+            if connector_file.lower().endswith(
+                    'ectrode_positions_onannotation.txt'):
+                position_files.append(connector_file)
+
+        for filename in position_files:
+            pos_file = self.parent.parent.repository.join(filename)
+            if not self.parent.parent.repository.is_file(pos_file):
+                log.warning('position file {} for point {} not found'
+                            .format(filename, self.name))
+                continue
+
+            with self.parent.parent.repository.open(pos_file) as fid:
+                idx, time, xyz = read_electrode_pos_file(fid)
+
+            # find electrode with the closest distance
+            dist = sp_distance.cdist(xyz, np.array([self.recX])).flatten()
+            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
+            if idx_closest.size != 1:
+                log.debug(
+                    'found no or multiple electrodes with same minimum '
+                    'distance in file {}. Trying next file...'
+                    .format(filename))
+                continue
+            idx_closest = idx_closest[0]
+            if dist[idx_closest] > 0:
+                # position must be exact match
+                continue
+
+            try:
+                xyz_2 = xyz[idx_closest + 1, :]
+            except IndexError:
+                log.debug('unable to get position of 2nd uni channel for '
+                          'point {}'.format(self.name))
+
+        if np.isnan(xyz_2).all():
+            log.warning('coordinates for 2nd unipolar channel not found for '
+                        'point {}'
+                        .format(self.name))
+
+        return xyz_2
 
     def _channel_names_from_pos_file(self, egm_names, encoding='cp1252'):
         """
