@@ -32,7 +32,8 @@ from pyceps.fileio import FileWriter
 from pyceps.fileio.cartoutils import (read_mesh_file,
                                       read_ecg_file_header, read_ecg_file,
                                       read_force_file,
-                                      read_visitag_file)
+                                      read_visitag_file,
+                                      read_electrode_pos_file)
 from pyceps.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
                                          SurfaceErrorTable,
                                          PasoTable, CFAEColoringTable, Tag,
