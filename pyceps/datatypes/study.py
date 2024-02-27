@@ -303,7 +303,7 @@ class EPStudy:
             ValueError : If user input is not recognised
 
         Returns:
-            None
+            str : file path PKL was saved to
         """
 
         if not self.maps:
@@ -371,6 +371,7 @@ class EPStudy:
         self.repository.base = study_base
 
         log.info('saved study to {}'.format(f_loc))
+        return f_loc
 
     def visualize(self, bgnd=None):
         """Visualize the study in dash."""
