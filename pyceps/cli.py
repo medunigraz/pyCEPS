@@ -478,10 +478,20 @@ def execute_commands(args):
         else:
             logger.warning('Unknown user input {}'.format(user_input))
 
+    pkl_loc = ''
     if args.save_study:
-        study.save(None if args.save_study == 'DEFAULT' else args.save_study)
+        pkl_loc = study.save(None if args.save_study == 'DEFAULT' else
+                             args.save_study)
 
-    return study
+    # redirect log file
+    log_file = pkl_loc.replace('.pkl', '_import.log') if pkl_loc else (
+        os.path.join(
+            study.build_export_basename(''),
+            study.name + '_import.log'
+        )
+    )
+
+    return study, log_file
 
 
 def run():
@@ -495,11 +505,7 @@ def run():
     ep_study = None
     log_file = os.path.join(os.getcwd(), 'import.log')
     try:
-        ep_study = execute_commands(cl_args)
-        # redirect log file
-        log_file = os.path.join(ep_study.build_export_basename(''),
-                                ep_study.name + '_import.log'
-                                )
+        ep_study, log_file = execute_commands(cl_args)
     except:
         logger.error('File import finished with errors!\n{}'
                      .format(traceback.format_exc()))
