@@ -539,6 +539,6 @@ if __name__ == '__main__':
         'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
         'This program comes with ABSOLUTELY NO WARRANTY;\n'
         'This is free software, and you are welcome to redistribute '
-        'it under certain conditions; see LICENSE.txt for details.'
+        'it under certain conditions; see LICENSE.txt for details.\n'
     )
     run()
