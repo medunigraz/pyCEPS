@@ -237,6 +237,13 @@ def get_args():
              'Used only when data is loaded from PKL file.'
     )
     misc.add_argument(
+        '--egm-from-pos',
+        action='store_true',
+        help='Retrieve EGM channel names from recording positions.\n'
+             'This will add coordinates for the second unipolar EGM channel.\n'
+             'Note: Requires valid study root!'
+    )
+    misc.add_argument(
         '--logger-level',
         type=str,
         default='INFO',
@@ -418,7 +425,8 @@ def execute_commands(args):
         if args.pkl_file and not study.is_root_valid():
             logger.warning('a valid study root is necessary to import maps!')
         else:
-            study.import_maps(study.mapNames)
+            study.import_maps(study.mapNames,
+                              egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
                 study.maps[map_name].import_lesions(directory=None)
