@@ -518,9 +518,14 @@ def run():
         logging.shutdown()
 
         # save log file to disk
-        os.close(log_fid)
-        shutil.copy(log_path, log_file)
-        print('import log saved to {}'.format(log_file))
+        if os.access(os.path.dirname(log_file), os.W_OK):
+            os.close(log_fid)
+            shutil.copy(log_path, log_file)
+            print('import log saved to {}'.format(log_file))
+        else:
+            print('cannot save log file, no write permission for {}'
+                  .format(log_file))
+            os.close(log_fid)
         os.remove(log_path)
 
     # everything is done, visualize if requested
