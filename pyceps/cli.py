@@ -28,6 +28,7 @@ import sys
 from argparse import ArgumentParser, Action
 import logging
 import tempfile
+from typing import Tuple
 
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
@@ -253,7 +254,7 @@ def get_args():
     return parser.parse_args()
 
 
-def configure_logger(log_level: str) -> tuple[int, str]:
+def configure_logger(log_level: str) -> Tuple[int, str]:
     """
     Set logging console and file formats.
 
