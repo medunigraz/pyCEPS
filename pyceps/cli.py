@@ -28,6 +28,7 @@ import sys
 from argparse import ArgumentParser, Action
 import logging
 import tempfile
+from typing import Tuple
 
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
@@ -260,7 +261,7 @@ def get_args():
     return parser.parse_args()
 
 
-def configure_logger(log_level: str) -> tuple[int, str]:
+def configure_logger(log_level: str) -> Tuple[int, str]:
     """
     Set logging console and file formats.
 
@@ -525,9 +526,14 @@ def run():
         logging.shutdown()
 
         # save log file to disk
-        os.close(log_fid)
-        shutil.copy(log_path, log_file)
-        print('import log saved to {}'.format(log_file))
+        if os.access(os.path.dirname(log_file), os.W_OK):
+            os.close(log_fid)
+            shutil.copy(log_path, log_file)
+            print('import log saved to {}'.format(log_file))
+        else:
+            print('cannot save log file, no write permission for {}'
+                  .format(log_file))
+            os.close(log_fid)
         os.remove(log_path)
 
     # everything is done, visualize if requested
@@ -541,6 +547,6 @@ if __name__ == '__main__':
         'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
         'This program comes with ABSOLUTELY NO WARRANTY;\n'
         'This is free software, and you are welcome to redistribute '
-        'it under certain conditions; see LICENSE.txt for details.'
+        'it under certain conditions; see LICENSE.txt for details.\n'
     )
     run()
