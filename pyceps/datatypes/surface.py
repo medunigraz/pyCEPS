@@ -334,7 +334,7 @@ class Surface:
 
         """
 
-        status = 'Exporting signal maps for surface\n'
+        status = ''
 
         if len(self.signalMaps) == 0:
             status += 'no map data found, nothing to export!\n'
@@ -351,7 +351,7 @@ class Surface:
             except IndexError:
                 status += 'signal map {} not found in data!\n'.format(n)
 
-        return status
+        return status.rstrip()
 
     def get_closest_vertex(self, points, limit_to_triangulation=False):
         """

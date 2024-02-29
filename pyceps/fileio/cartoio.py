@@ -1344,6 +1344,77 @@ class CartoMap(EPMap):
 
         return repr_ecg
 
+    def export_point_info(self, basename='', points=None):
+        """
+        Export additional recording point info in DAT format.
+
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        Following data can is exported:
+            NAME : point identifier
+            REF : reference annotation
+            WOI : window of interest, relative to REF
+
+        By default, data from all valid points is exported, but also a
+        list of EPPoints to use can be given.
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ptdata.<parameter>.pc.dat
+
+        Parameters:
+            basename : string (optional)
+                path and filename of the exported files
+           points : list of CartoPoints (optional)
+                EGM points to export
+
+        Returns:
+            None
+        """
+
+        log.info('exporting additional EGM point data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        if not basename:
+            basename = self.parent.build_export_basename(self.name)
+            basename = os.path.join(basename, self.name)
+
+        # export point files
+        self.export_point_cloud(points=points, basename=basename)
+
+        # export data
+        writer = FileWriter()
+
+        data = [point.name for point in points]
+        dat_file = basename + '.ptdata.NAME.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point names to {}'.format(dat_file))
+
+        data = [point.refAnnotation for point in points]
+        dat_file = basename + '.ptdata.REF.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point reference annotation to {}'.format(dat_file))
+
+        data = [point.woi[0] for point in points]
+        dat_file = basename + '.ptdata.WOI_START.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point WOI (start) to {}'.format(dat_file))
+        data = [point.woi[1] for point in points]
+        dat_file = basename + '.ptdata.WOI_END.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point WOI (end) to {}'.format(dat_file))
+
+        return
+
     def export_point_ecg(self, basename='', which=None, points=None):
         """
         Export surface ECG traces in IGB format. Overrides BaseClass method.
@@ -1376,7 +1447,12 @@ class CartoMap(EPMap):
             None
         """
 
-        log.info('exporting surface ECG data')
+        log.info('exporting point ECG data')
+
+        if not self.parent.is_root_valid():
+            log.warning('a valid study root is necessary to dump ECG '
+                        'data for recording points!')
+            return
 
         if not points:
             points = self.get_valid_points()

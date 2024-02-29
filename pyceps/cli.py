@@ -361,17 +361,14 @@ def export_map_data(study, map_name, args):
     # dump point data for recording points
     if args.dump_point_data:
         study.maps[map_name].export_point_data()
+        study.maps[map_name].export_point_info()
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:
-        if not study.is_root_valid():
-            logger.warning('a valid study root is necessary to dump ECG '
-                           'data for recording points!')
-        else:
-            study.maps[map_name].export_point_ecg(
-                which=(None if args.dump_point_ecgs == 'DEFAULT'
-                       else args.dump_point_ecgs)
-            )
+        study.maps[map_name].export_point_ecg(
+            which=(None if args.dump_point_ecgs == 'DEFAULT'
+                   else args.dump_point_ecgs)
+        )
 
     # dump EGM traces for recording points
     if args.dump_point_egms:
