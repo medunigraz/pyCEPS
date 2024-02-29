@@ -361,6 +361,7 @@ def export_map_data(study, map_name, args):
     # dump point data for recording points
     if args.dump_point_data:
         study.maps[map_name].export_point_data()
+        study.maps[map_name].export_point_info()
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:

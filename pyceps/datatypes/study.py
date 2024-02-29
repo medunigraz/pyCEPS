@@ -804,6 +804,15 @@ class EPMap:
 
         return
 
+    def export_point_info(self, basename='', points=None):
+        """
+        Export additional point info.
+
+        Info for points differs on EP systems, needs to be implemented
+        in specific data type.
+        """
+        raise NotImplementedError
+
     def export_signal_maps(self, basename='', which=None):
         """
         Export surface map data in DAT format.
