@@ -704,11 +704,12 @@ class EPMap:
 
         # create points files if necessary
         pts_file = '{}.pc.pts'.format(basename)
-        log.info('exporting mapping points cloud')
+        log.info('exporting mapping points cloud to {}'.format(pts_file))
         writer.dump(pts_file, mesh_points)
 
         pts_file = '{}.ppc.pts'.format(basename)
-        log.info('exporting mapping points projected on surface')
+        log.info('exporting mapping points projected on surface to {}'
+                 .format(pts_file))
         writer.dump(pts_file, surf_points)
 
         return
@@ -749,7 +750,7 @@ class EPMap:
             None
         """
 
-        log.info('exporting surface map data')
+        log.info('exporting EGM point data')
 
         if not points:
             points = self.get_valid_points()
@@ -775,32 +776,32 @@ class EPMap:
             data = [point.uniVoltage for point in points]
             dat_file = basename + '.ptdata.UNI.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "BIP" in which:
             data = [point.bipVoltage for point in points]
             dat_file = basename + '.ptdata.BIP.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "LAT" in which:
             data = [point.latAnnotation - point.refAnnotation
                     for point in points]
             dat_file = basename + '.ptdata.LAT.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "IMP" in which:
             data = [point.impedance for point in points]
             dat_file = basename + '.ptdata.IMP.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "FRC" in which:
             data = [point.force for point in points]
             dat_file = basename + '.ptdata.FRC.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         return
 
@@ -879,7 +880,7 @@ class EPMap:
             None
         """
 
-        log.info('exporting point egm data')
+        log.info('exporting point EGM data')
 
         if not points:
             points = self.get_valid_points()
