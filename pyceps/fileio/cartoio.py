@@ -1448,6 +1448,10 @@ class CartoMap(EPMap):
         """
 
         log.info('exporting surface ECG data')
+        if not self.parent.is_root_valid():
+            log.warning('a valid study root is necessary to dump ECG '
+                        'data for recording points!')
+            return
 
         if not points:
             points = self.get_valid_points()
