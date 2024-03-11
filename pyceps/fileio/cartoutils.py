@@ -621,13 +621,17 @@ def read_visitag_file(fid, encoding='cp1252'):
 
     # read header information
     col_headers = fid.readline().decode(encoding=encoding).rstrip().split()
+    # save current read pos for later
+    last_pos = fid.tell()
     if not fid.readline().decode(encoding=encoding):
         # file is empty!
         return np.array([], dtype=float, ndmin=2), []
 
+    # reset reading position
+    fid.seek(last_pos)
     data = np.loadtxt(fid,
                       dtype=float,
-                      skiprows=1,
+                      skiprows=0,
                       ndmin=2,
                       )
 

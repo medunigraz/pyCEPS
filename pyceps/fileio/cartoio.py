@@ -1355,7 +1355,8 @@ class CartoMap(EPMap):
         Following data can is exported:
             NAME : point identifier
             REF : reference annotation
-            WOI : window of interest, relative to REF
+            WOI_START : window of interest, relative to REF
+            WOI_END : window of interest, relative to REF
 
         By default, data from all valid points is exported, but also a
         list of EPPoints to use can be given.
