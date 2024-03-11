@@ -20,6 +20,7 @@
 import os
 import re
 import logging
+import sys
 import zipfile
 import py7zr
 
@@ -346,6 +347,10 @@ class Repository:
         return open(filepath, mode=mode)
 
     def _zip_open(self, filepath, pwd=None, mode='rb'):
+        version = sys.version_info
+        if version.major == 3 and version.minor == 8:
+            return filepath.open(mode='r', pwd=pwd)
+
         # mode "rb" has to be given to read as binary file-like, although
         # not in documentation...?
         return filepath.open(mode='rb', pwd=pwd)
