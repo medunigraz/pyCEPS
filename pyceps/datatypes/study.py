@@ -399,7 +399,7 @@ class EPMap:
             triangulated anatomical shell
         points : list of subclass EPPoints
             the mapping points recorded during mapping procedure
-        ecg : list of BodySurfaceECG
+        bsecg : list of BodySurfaceECG
             body surface ECG data for the mapping procedure
         lesions : list of Lesion
             ablation data for this mapping procedure
@@ -481,7 +481,7 @@ class EPMap:
         self.surfaceFile = ''
         self.surface = None
         self.points = []
-        self.ecg = []
+        self.bsecg = []
         self.lesions = []
 
     def get_valid_points(self, return_invalid=False):
@@ -967,7 +967,7 @@ class EPMap:
 
         log.info('exporting body surface ECGs for map {}'.format(self.name))
 
-        if not self.ecg:
+        if not self.bsecg:
             log.warning('no body surface ECG data found, nothing to export...')
             return
 
@@ -977,7 +977,7 @@ class EPMap:
 
         writer = FileWriter()
 
-        for bsecg in self.ecg:
+        for bsecg in self.bsecg:
             filename = '{}.bsecg.{}.json'.format(basename, bsecg.method)
 
             # build timeline
@@ -993,7 +993,7 @@ class EPMap:
             for signal in bsecg.traces:
                 data_dict[signal.name] = signal.data.tolist()
 
-            bsecg_json['ecg'] = data_dict
+            bsecg_json['bsecg'] = data_dict
 
             f = writer.dump(filename, bsecg_json, indent=2)
             log.info('exported body surface ECG trace(s) {} to {}'

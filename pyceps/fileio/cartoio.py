@@ -962,7 +962,7 @@ class CartoMap(EPMap):
             triangulated anatomical shell
         points : list of subclass EPPoints
             the mapping points recorded during mapping procedure
-        ecg : list of BodySurfaceECG
+        bsecg : list of BodySurfaceECG
             body surface ECG data for the mapping procedure
         lesions : list of Lesion
             ablation data for this mapping procedure
@@ -1036,7 +1036,7 @@ class CartoMap(EPMap):
         self.interpolate_data('lat')
         self.interpolate_data('bip')
         self.interpolate_data('uni')
-        self.ecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
+        self.bsecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
 
     def load_mesh(self):
         """
@@ -1283,7 +1283,7 @@ class CartoMap(EPMap):
                 # make this the new ref
                 ref = point.refAnnotation
 
-        # build representative ecg trace
+        # build representative bsecg trace
         if isinstance(method, str):
             method = [method]
         repr_ecg = []
