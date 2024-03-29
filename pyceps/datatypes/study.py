@@ -1094,6 +1094,8 @@ class EPPoint:
             annotation for reference detection in samples
         latAnnotation : int
             annotation for local activation time in samples
+        woi : ndarray (2, 1)
+            start and end timestamps of the WOI in samples
         uniVoltage : float
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
@@ -1139,13 +1141,13 @@ class EPPoint:
 
         # location info
         self.recX = coordinates
-        self.prjX = np.full((3, 1), np.nan, dtype=float)
         self.prjX = np.full((3, 1), np.nan, dtype=np.float32)
         self.prjDistance = np.nan
 
         # annotation info
         self.refAnnotation = np.nan
         self.latAnnotation = np.nan
+        self.woi = np.full((2, 1), np.iinfo(int).min, dtype=int)
 
         # voltages
         self.uniVoltage = np.nan
