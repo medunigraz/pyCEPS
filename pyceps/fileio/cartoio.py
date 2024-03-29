@@ -21,6 +21,7 @@ import logging
 import zipfile
 import re
 import xml.etree.ElementTree as xml
+import xml.etree.ElementTree as ET
 import numpy as np
 import gzip
 import pickle
@@ -1099,7 +1100,7 @@ class CartoMap(EPMap):
 
         xml_file = self.parent.repository.join(self.studyXML)
         with self.parent.repository.open(xml_file, mode='rb') as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
                     if x.get('Name') == self.name]
@@ -1122,7 +1123,7 @@ class CartoMap(EPMap):
             return -1
 
         with self.parent.repository.open(all_points_file, mode='rb') as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         if not root.get('Map_Name') == self.name:
             log.warning('map name {} in export file {} does not match map '
@@ -1691,7 +1692,7 @@ class CartoMap(EPMap):
 
         xml_file = self.parent.repository.join(self.studyXML)
         with self.parent.repository.open(xml_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
                     if x.get('Name') == self.name]
@@ -2161,7 +2162,7 @@ class CartoPoint(EPPoint):
         # read points XML file
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         # get position files
         position_files = []
@@ -2231,7 +2232,7 @@ class CartoPoint(EPPoint):
         # read points XML file
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         # get position files
         position_files = []
