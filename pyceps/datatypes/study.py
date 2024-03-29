@@ -304,15 +304,15 @@ class EPStudy:
             str : file path .pyceps was saved to
         """
 
-        if not self.maps:
-            log.info('No maps imported, nothing to save!')
-            return
-
         if not filepath:
             filepath = os.path.join(self.build_export_basename(''),
                                     self.name + '.pyceps')
         if not filepath.lower().endswith('.pyceps'):
             filepath += '.pyceps'
+
+        if not self.maps:
+            log.info('No maps imported, nothing to save!')
+            return None, filepath
 
         # check if file already exists
         if os.path.isfile(filepath):

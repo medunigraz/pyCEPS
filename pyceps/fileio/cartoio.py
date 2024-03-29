@@ -770,6 +770,10 @@ class CartoStudy(EPStudy):
         # add basic information to XML
         root, filepath = super().save(filepath)
 
+        if not root:
+            # no base info was created (no maps imported), nothing to add
+            return filepath
+
         # add Carto specific data
         root.set('studyXML', self.studyXML)
         ET.SubElement(root, 'Units',

@@ -523,18 +523,20 @@ def execute_commands(args):
         else:
             logger.warning('Unknown user input {}'.format(user_input))
 
-    pkl_loc = ''
+    pyceps_loc = ''
     if args.save_study:
-        pkl_loc = study.save(None if args.save_study == 'DEFAULT' else
-                             args.save_study)
+        pyceps_loc = study.save(None if args.save_study == 'DEFAULT' else
+                                args.save_study)
 
     # redirect log file
-    log_file = pkl_loc.replace('.pkl', '_import.log') if pkl_loc else (
-        os.path.join(
+    if pyceps_loc:
+        base_file, _ = os.path.splitext(pyceps_loc)
+        log_file = base_file + '_import.log'
+    else:
+        log_file = os.path.join(
             study.build_export_basename(''),
             study.name + '_import.log'
         )
-    )
 
     return study, log_file
 
