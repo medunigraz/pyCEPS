@@ -2099,7 +2099,7 @@ class CartoPoint(EPPoint):
                 log.warning('found no or multiple surface vertices closest to '
                             'to point {}: {}'
                             .format(self.name, closest))
-            self.prjX = np.array(closest[0], dtype=float)
+            self.prjX = np.array(closest[0], dtype=np.float32)
             self.prjDistance = distance[0]
             self.barDirection = direct[0]
 
@@ -2206,7 +2206,7 @@ class CartoPoint(EPPoint):
             # array has shape (2500,) but (2500,1) is needed
             ecg_data = np.expand_dims(ecg_data, axis=1)
 
-        return ecg_data
+        return ecg_data.astype(np.float32)
 
     def _channel_names_from_ecg_header(self, ecg_header):
         """
