@@ -746,16 +746,62 @@ class CartoStudy(EPStudy):
         #
         # return study
 
-        # try to re-set previous study root
-        if obj.set_root(obj.repository.base):
-            log.info('previous study root is still valid ({})'
-                     .format(obj.repository.root))
-            return obj
+    def save(self, filepath=''):
+        """
+        Save study object as .pyceps archive.
+        Note: File is only created if at least one map was imported!
 
-        # no valid root found so far, set to pkl directory
-        log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.repository.update_root(os.path.dirname(os.path.abspath(filename)))
-        return obj
+        By default, the filename is the study's name, but can also be
+        specified by the user.
+        If the file already exists, user interaction is required to either
+        overwrite file or specify a new file name.
+
+        Parameters:
+            filepath : string (optional)
+                custom path for the output file
+
+        Raises:
+            ValueError : If user input is not recognised
+
+        Returns:
+            str : file path .pyceps was saved to
+        """
+
+        # add basic information to XML
+        root, filepath = super().save(filepath)
+
+        # add Carto specific data
+        root.set('studyXML', self.studyXML)
+        ET.SubElement(root, 'Units',
+                      distance=self.units.Distance,
+                      angle=self.units.Angle
+                      )
+
+        for key, cmap in self.maps.items():
+            map_item = [p for p in root.iter('Procedure')
+                        if p.get('name') == key][0]
+
+            # add additional procedure info
+            map_item.set('meshFile', cmap.surfaceFile)
+            map_item.set('volume', str(cmap.volume))
+
+            # add additional point info
+            point_item = map_item.find('Points')
+            to_add = ['pointFile', 'ecgFile', 'forceFile', 'uniX']
+            for name in to_add:
+                data = [getattr(p, name) for p in cmap.points]
+                xml_add_binary_numpy(point_item, name, np.array(data))
+
+        # make XML pretty
+        dom = minidom.parseString(ET.tostring(root))
+        xml_string = dom.toprettyxml(encoding='utf-8')
+
+        # write XML
+        with open(filepath, 'wb') as fid:
+            fid.write(xml_string)
+
+        log.info('saved study to {}'.format(filepath))
+        return filepath
 
     def export_additional_meshes(self, filename=''):
         """
