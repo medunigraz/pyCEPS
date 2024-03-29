@@ -219,9 +219,9 @@ class EPStudy:
     def set_root(self, root_dir):
         raise NotImplementedError
 
-    @classmethod
-    def load(cls, filename, root=None):
-        raise NotImplemented
+    def load(self, root: ET.Element):
+        """Load study object from .pyceps archive."""
+        raise NotImplementedError
 
     def list_maps(self, minimal=False):
         """

@@ -20,16 +20,21 @@ import os
 import logging
 import zipfile
 import re
-import xml.etree.ElementTree as xml
 import xml.etree.ElementTree as ET
+from xml.dom import minidom
 import numpy as np
-import gzip
-import pickle
 import scipy.spatial.distance as sp_distance
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes import EPStudy, EPMap, EPPoint, Mesh
 from pyceps.fileio import FileWriter
+from pyceps.fileio.xmlio import (xml_add_binary_numpy,
+                                 xml_load_binary_data,
+                                 xml_load_binary_surface,
+                                 xml_load_binary_trace,
+                                 xml_load_binary_bsecg,
+                                 xml_load_binary_lesion
+                                 )
 from pyceps.fileio.cartoutils import (read_mesh_file,
                                       read_ecg_file_header, read_ecg_file,
                                       read_force_file,
@@ -617,10 +622,9 @@ class CartoStudy(EPStudy):
 
         return grid_sites
 
-    @classmethod
-    def load(cls, filename, root=None):
+    def load(self, root: ET.Element):
         """
-        Load pickled version of a study. Overrides BaseClass method.
+        Load study from file. Overrides BaseClass method.
 
         A previously saved pickled version of a CartoStudy object can be
         loaded. The objects <study_root> is set to the one stored in the
@@ -632,37 +636,115 @@ class CartoStudy(EPStudy):
         but probably consumes a lot more memory, so we'll skip that for now.
 
         Parameters:
-            filename : string
-                path to the .PKL or .GZ study file
-            root : string (optional)
-                set study root to this directory
+            root : xml.etree.Element
+                root element in .pyceps file
 
         Raises:
-            FileNotFoundError : if pickled file cannot be found
+            TypeError : If file is not Carto3
 
         Returns:
-            CartoStudy
+            None
 
         """
 
-        log.info('loading study from {}'.format(filename))
+        log.debug('loading study')
 
-        if filename.endswith('.gz'):
-            f = gzip.open(filename, 'rb')
-        else:
-            f = open(filename, 'rb')
-        obj = pickle.load(f)
-        f.close()
+        system = root.get('system')
+        if not system.lower() == "carto3":
+            raise TypeError('expected Carto3 system file, found {}'
+                            .format(system))
 
-        # try to set root if explicitly given
-        if root:
-            if obj.set_root(os.path.abspath(root)):
-                log.info('setting study root to {}'.format(root))
-                return obj
-            else:
-                log.info('cannot set study root to {}\n'
-                         'Trying to use root information from PKL'
-                         .format(root))
+        # load basic info
+        self.system = system
+        self.name = root.get('name')
+        self.studyXML = root.get('studyXML')
+        units = root.find('Units')
+        self.units = CartoUnits(units.get('distance'), units.get('angle'))
+
+        # load additional meshes
+        mesh_item = root.find('AdditionalMeshes')
+        if int(mesh_item.get('count')) > 0:
+            reg_matrix = np.array(mesh_item.get('registrationMatrix'))
+            file_names = xml_load_binary_data(mesh_item.find('DataArray'))
+            self.meshes = Mesh(registrationMatrix=reg_matrix,
+                               fileNames=file_names
+                               )
+
+        # load mapping procedures
+        proc_item = root.find('Procedures')
+        num_procedures = proc_item.get('count')
+        sep = str(proc_item.get('sep'))
+        self.mapNames = proc_item.get('names').split(sep)
+        self.mapPoints = (np.array(proc_item.get('points').split(sep))
+                          .astype(np.int32))
+
+        for proc in proc_item.iter('Procedure'):
+            name = proc.get('name')
+
+            new_map = CartoMap(name, self.studyXML, parent=self)
+            new_map.surfaceFile = proc.get('meshFile')
+            new_map.volume = float(proc.get('volume'))
+
+            # load mesh
+            new_map.surface = xml_load_binary_surface(proc.find('Mesh'))
+
+            # load BSECGs
+            new_map.bsecg = xml_load_binary_bsecg(proc.find('BSECGS'))
+
+            # load lesions
+            new_map.lesions = xml_load_binary_lesion(proc.find('Lesions'))
+
+            # load EGM points
+            p_data = {}
+            points_item = proc.find('Points')
+            num_points = int(points_item.get('count'))
+
+            for arr in points_item.findall('DataArray'):
+                d_name, data = xml_load_binary_data(arr)
+                p_data[d_name] = data
+            for arr in points_item.findall('Traces'):
+                d_name, data = xml_load_binary_trace(arr)
+                p_data[d_name] = data
+
+            points = []
+            for i in range(num_points):
+                new_point = CartoPoint('dummy', parent=new_map)
+                for key, value in p_data.items():
+                    if hasattr(new_point, key):
+                        setattr(new_point, key, value[i])
+                    else:
+                        log.warning('cannot set attribute "{}" for CartoPoint'
+                                    .format(key))
+                points.append(new_point)
+            new_map.points = points
+
+            # now we can add the procedure to the study
+            self.maps[name] = new_map
+
+        #
+        # # try to set root if explicitly given
+        # if root:
+        #     if study.set_root(os.path.abspath(root)):
+        #         log.info('setting study root to {}'.format(root))
+        #         return study
+        #     else:
+        #         log.info('cannot set study root to {}\n'
+        #                  'Trying to use root information from file'
+        #                  .format(root))
+        #
+        # # try to re-set previous study root
+        # if study.set_root(repo.get('base')):
+        #     log.info('previous study root is still valid ({})'
+        #              .format(study.repository.root))
+        #     return study
+        #
+        # # no valid root found so far, set to pkl directory
+        # log.warning('no valid study root found. Using file location!'.upper())
+        # study.repository.update_root(
+        #     os.path.dirname(os.path.abspath(filename))
+        # )
+        #
+        # return study
 
         # try to re-set previous study root
         if obj.set_root(obj.repository.base):
