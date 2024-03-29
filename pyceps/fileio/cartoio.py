@@ -1801,8 +1801,8 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, 2)
-            cartesian coordinates of the unipolar recording electrodes
+        uniX : ndarray (3, 1)
+            cartesian coordinates of the second unipolar recording electrode
             NOTE: coordinates of second unipolar electrode are NaN if
             unipolar channel names were read from ECG file only
         forceFile : str
@@ -2180,7 +2180,7 @@ class CartoPoint(EPPoint):
                 continue
 
             with self.parent.parent.repository.open(pos_file) as fid:
-                idx, time, xyz = read_electrode_pos_file(fid)
+                idx, time, xyz = read_electrode_pos_file(fid, encoding=encoding)
 
             # find electrode with the closest distance
             dist = sp_distance.cdist(xyz, np.array([self.recX])).flatten()
@@ -2197,7 +2197,7 @@ class CartoPoint(EPPoint):
                 continue
 
             try:
-                xyz_2 = xyz[idx_closest + 1, :]
+                xyz_2 = np.expand_dims(xyz[idx_closest + 1, :], axis=1)
             except IndexError:
                 log.debug('unable to get position of 2nd uni channel for '
                           'point {}'.format(self.name))
