@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 # pyCEPS allows to import, visualize and translate clinical EAM data.
 #     Copyright (C) 2023  Robert Arnold
 #
@@ -614,8 +613,9 @@ class EPMap:
         surf_map = SurfaceSignalMap(name=which.upper(),
                                     values=interpolated.astype(np.single),
                                     location='pointData',
-                                    description='creationDate:{}'.format(
-                                        datetime.datetime)
+                                    description='creationDate: {}'.format(
+                                        datetime.datetime.now()
+                                        .strftime("%Y-%m-%d %H:%M:%S"))
                                     )
         self.surface.add_signal_maps(surf_map)
 
