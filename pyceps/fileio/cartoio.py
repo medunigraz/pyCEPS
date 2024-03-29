@@ -672,7 +672,8 @@ class CartoStudy(EPStudy):
 
         # no valid root found so far, set to pkl directory
         log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.repository.update_root(os.path.dirname(os.path.abspath(filename)))
+        obj.repository.base = os.path.abspath(filename)
+        obj.repository.root = os.path.dirname(os.path.abspath(filename))
         return obj
 
     def export_additional_meshes(self, filename=''):
