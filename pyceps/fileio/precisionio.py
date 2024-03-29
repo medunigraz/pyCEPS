@@ -120,7 +120,7 @@ class PrecisionStudy(EPStudy):
         # specified root directory is valid
         return True
 
-    def set_root(self, root_dir):
+    def set_repository(self, root_dir):
         """
         Change path to root directory.
 
@@ -179,7 +179,7 @@ class PrecisionStudy(EPStudy):
 
         # try to set root if explicitly given
         if root:
-            if obj.set_root(os.path.abspath(root)):
+            if obj.set_repository(os.path.abspath(root)):
                 log.info('setting study root to {}'.format(root))
                 return obj
             else:
@@ -191,7 +191,7 @@ class PrecisionStudy(EPStudy):
         if obj.is_root_valid():
             log.info('previous study root is still valid ({})'
                      .format(obj.studyRoot))
-            obj.set_root(os.path.abspath(obj.studyRoot))
+            obj.set_repository(os.path.abspath(obj.studyRoot))
             return obj
 
         # no valid root found so far, set to pkl directory
