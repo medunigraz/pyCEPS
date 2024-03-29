@@ -144,7 +144,7 @@ class EPStudy:
         self.maps = {}
 
         # additional meshes, i.e. from CT data
-        self.meshes = []
+        self.meshes = None
 
     def import_study(self):
         raise NotImplementedError
