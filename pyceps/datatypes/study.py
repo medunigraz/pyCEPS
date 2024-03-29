@@ -21,19 +21,22 @@ import logging
 import os
 from typing import Iterable
 import numpy as np
-import zipfile
-import gzip
-import pickle
+import xml.etree.ElementTree as ET
 import webbrowser
-
-import py7zr
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes.surface import SurfaceSignalMap
 from pyceps.fileio import FileWriter
+from pyceps.fileio.xmlio import (xml_add_binary_numpy,
+                                 xml_add_binary_trace,
+                                 xml_add_binary_bsecg,
+                                 xml_add_binary_surface,
+                                 xml_add_binary_lesion
+                                 )
 from pyceps.interpolation import (inverse_distance_weighting,
                                   remove_redundant_points
                                   )
+from pyceps.datatypes.signals import Trace, BodySurfaceECG
 from pyceps.visualize import get_dash_app
 
 
@@ -280,9 +283,9 @@ class EPStudy:
 
         return export_folder
 
-    def save(self, filepath='', gz=False):
+    def save(self, filepath=''):
         """
-        Save pickled version of study object.
+        Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
 
         By default, the filename is the study's name, but can also be
@@ -290,55 +293,30 @@ class EPStudy:
         If the file already exists, user interaction is required to either
         overwrite file or specify a new file name.
 
-        Using HIGHEST_PROTOCOL is almost 2X faster and creates a file that
-        is ~10% smaller. Load times go down by a factor of about 3X.
-
         Parameters:
             filepath : string (optional)
                 custom path for the output file
-            gz : boolean (optional)
-                use gzip compression or not
 
         Raises:
             ValueError : If user input is not recognised
 
         Returns:
-            str : file path PKL was saved to
+            root : ET.Element
+            str : file path .pyceps was saved to
         """
 
         if not self.maps:
             log.info('No maps imported, nothing to save!')
             return
 
-        if filepath:
-            if filepath.lower().endswith('.pkl'):
-                filepath = filepath[:-4]
-            f_loc = os.path.abspath(filepath)
-        else:
-            f_loc = os.path.join(self.build_export_basename(''), self.name)
+        if not filepath:
+            filepath = os.path.join(self.build_export_basename(''),
+                                    self.name + '.pyceps')
+        if not filepath.lower().endswith('.pyceps'):
+            filepath += '.pyceps'
 
-        # handle un-pickleable attributes
-        study_base = self.repository.base
-        study_root = self.repository.root
-        if isinstance(self.repository.root, zipfile.Path):
-            self.repository.root = os.path.abspath(
-                self.repository.root.root.filename
-            )
-        if isinstance(self.repository.base, zipfile.Path):
-            self.repository.base = os.path.abspath(
-                self.repository.base.root.filename
-            )
-        if isinstance(self.repository.root, py7zr.SevenZipFile):
-            self.repository.root = os.path.abspath(
-                self.repository.root.filename
-            )
-        if isinstance(self.repository.base, py7zr.SevenZipFile):
-            self.repository.base = os.path.abspath(
-                self.repository.base.filename
-            )
-
-        f_loc += '.gz' if gz else '.pkl'
-        if os.path.isfile(f_loc):
+        # check if file already exists
+        if os.path.isfile(filepath):
             user_input = input('Study object already exists, overwrite? [Y/N]')
             # input validation
             if user_input.lower() in ('y', 'yes'):
@@ -349,8 +327,8 @@ class EPStudy:
                     suffix = ''
                     while not suffix:
                         suffix = input('Suffix: ')
-                    f_loc, ext = os.path.splitext(f_loc)
-                    f_loc = f_loc + '_' + suffix + ext
+                    filepath, ext = os.path.splitext(filepath)
+                    filepath += '_' + suffix + ext
                 elif user_input.lower() in ('n', 'no'):
                     return
             else:
@@ -358,20 +336,73 @@ class EPStudy:
                 print('Error: Input {} unrecognised.'.format(user_input))
                 raise ValueError
 
-        if gz:
-            f = gzip.open(f_loc, 'wb')
-        else:
-            f = open(f_loc, 'wb')
+        # build XML
+        root = ET.Element('Study',
+                          name=self.name,
+                          system=self.system,
+                          version='0.1.0',
+                          )
 
-        pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-        f.close()
+        # add repository info
+        ET.SubElement(root, 'Repository',
+                      base=self.repository.get_base_string(),
+                      root=self.repository.get_root_string(),
+                      encoding=self.encoding
+                      )
 
-        # restore study root
-        self.repository.root = study_root
-        self.repository.base = study_base
+        # add additional meshes
+        if self.meshes:
+            count = str(len(self.meshes.fileNames))
+            reg_matrix = self.meshes.registrationMatrix
+            meshes_item = ET.SubElement(root, 'AdditionalMeshes',
+                                        count=count,
+                                        registrationMatrix=reg_matrix
+                                        )
+            xml_add_binary_numpy(meshes_item, 'fileNames',
+                                 np.array(self.meshes.fileNames))
 
-        log.info('saved study to {}'.format(f_loc))
-        return f_loc
+        # add mapping procedures
+        sep = ';'
+        procedures = ET.SubElement(root, 'Procedures',
+                                   count=str(len(self.maps.keys())),
+                                   names=sep.join(self.mapNames),
+                                   points=sep.join(self.mapPoints),
+                                   sep=ascii(sep)
+                                   )
+        for cmap in self.maps.values():
+            proc = ET.SubElement(procedures, 'Procedure', name=cmap.name)
+
+            # add surface mesh
+            xml_add_binary_surface(proc, 'Mesh', cmap.surface)
+
+            # add mapping points
+            points = ET.SubElement(proc, 'Points',
+                                   count=str(len(cmap.points))
+                                   )
+            for key in list(EPPoint('dummy', parent=cmap).__dict__):
+                if key == 'parent':
+                    # don't save this
+                    continue
+
+                data = [getattr(p, key) for p in cmap.points]
+                is_trace = (all([isinstance(e, Trace) for e in data])
+                            or (isinstance(data[0], list)
+                                and all([isinstance(e, Trace) for e in data[0]])
+                                )
+                            )
+                if is_trace:
+                    xml_add_binary_trace(points, key, data)
+                    continue
+
+                xml_add_binary_numpy(points, key, np.array(data))
+
+            # add representative body surface ECGs
+            xml_add_binary_bsecg(proc, 'BSECGS', cmap.bsecg)
+
+            # add lesion data
+            xml_add_binary_lesion(proc, 'Lesions', cmap.lesions)
+
+        return root, filepath
 
     def visualize(self, bgnd=None):
         """Visualize the study in dash."""
