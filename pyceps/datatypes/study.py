@@ -535,6 +535,10 @@ class EPMap:
                 [point for point in self.points if not point.is_valid()]
                 )
 
+    def import_map(self, *args, **kwargs):
+        """Import all relevant data."""
+        raise NotImplementedError
+
     def load_mesh(self, *args, **kwargs):
         """Load triangulated representation of the anatomical shell."""
         raise NotImplementedError
@@ -1191,6 +1195,10 @@ class EPPoint:
 
         self.impedance = np.nan
         self.force = np.nan
+
+    def import_point(self, *args, **kwargs):
+        """Import relevant data."""
+        raise NotImplementedError
 
     def is_valid(self):
         """Check if this point is valid."""

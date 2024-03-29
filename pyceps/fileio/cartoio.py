@@ -129,17 +129,7 @@ class CartoStudy(EPStudy):
                          pwd=pwd,
                          encoding=encoding)
 
-        # locate study XML
-        log.info('Locating study XML in {}...'.format(self.repository))
-        study_info = self._locate_study_xml(self.repository,
-                                            pwd=self.pwd,
-                                            encoding=self.encoding)
-        if not study_info:
-            raise FileNotFoundError
-
-        log.info('found study XML at {}'.format(self.repository.root))
-        self.studyXML = study_info['xml']
-        self.name = study_info['name']
+        self.studyXML = ''
 
         self.units = None
         self.environment = None  # TODO: is this relevant info?
@@ -149,20 +139,30 @@ class CartoStudy(EPStudy):
         # visitag data
         self.visitag = Visitag()
 
-        self.import_study()
-
     def import_study(self):
         """
         Load study details and basic information from study XML.
         Overrides BaseClass method.
         """
 
+        # locate study XML
+        log.info('Locating study XML in {}...'.format(self.repository))
+        study_info = self.locate_study_xml(self.repository, pwd=self.pwd,
+                                           encoding=self.encoding)
+        if not study_info:
+            log.warning('cannot locate study XML!')
+            return
+
+        log.info('found study XML at {}'.format(self.repository.root))
+        self.studyXML = study_info['xml']
+        self.name = study_info['name']
+
         log.info('accessing study XML: {}'.format(self.studyXML))
         log.info('gathering study information...')
 
         xml_path = self.repository.join(self.studyXML)
         with self.repository.open(xml_path) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         log.debug('reading study units')
         study_units = root.find('Units')
@@ -289,9 +289,8 @@ class CartoStudy(EPStudy):
         for map_name in map_names:
             try:
                 log.info('importing map {}:'.format(map_name))
-                new_map = CartoMap(map_name, self.studyXML,
-                                   parent=self,
-                                   egm_names_from_pos=egm_names_from_pos)
+                new_map = CartoMap(map_name, self.studyXML, parent=self)
+                new_map.import_map(egm_names_from_pos=egm_names_from_pos)
                 self.maps[map_name] = new_map
             except Exception as err:
                 log.warning('failed to import map {}: {}'
@@ -988,13 +987,9 @@ class CartoMap(EPMap):
 
     """
 
-    def __init__(self, name, study_xml, parent=None, egm_names_from_pos=False):
+    def __init__(self, name, study_xml, parent=None):
         """
         Constructor.
-        Load all relevant information for this mapping procedure, import EGM
-        recording points, interpolate standard surface parameter maps from
-        point data (bip voltage, uni voltage, LAT), and build representative
-        body surface ECGs.
 
         Parameters:
             name : str
@@ -1003,12 +998,6 @@ class CartoMap(EPMap):
                 name of the study's XML file (same as in parent)
             parent : CartoStudy (optional)
                 study this map belongs to
-            egm_names_from_pos : boolean (optional)
-                get names of egm traces from electrode positions
-
-        Raises:
-            MapAttributeError : If unable to retrieve map attributes from XML
-            MeshFileNotFoundError: If mesh file is not found in repository
 
         Returns:
             None
@@ -1026,6 +1015,26 @@ class CartoMap(EPMap):
         self.RefAnnotationConfig = None
         self.coloringRangeTable = []
         self.rf = None
+
+    def import_map(self, egm_names_from_pos=False):
+        """
+        Load all relevant information for this mapping procedure, import EGM
+        recording points, interpolate standard surface parameter maps from
+        point data (bip voltage, uni voltage, LAT), and build representative
+        body surface ECGs.
+
+        Parameters:
+            egm_names_from_pos : boolean (optional)
+                get names of egm traces from electrode positions
+
+        Raises:
+            MapAttributeError : If unable to retrieve map attributes from XML
+            MeshFileNotFoundError: If mesh file is not found in repository
+
+        Returns:
+            None
+
+        """
 
         self._import_attributes()
         self.surface = self.load_mesh()
@@ -1174,11 +1183,12 @@ class CartoMap(EPMap):
             log.debug('adding point {} to map {}'.format(point_name,
                                                          self.name))
             new_point = CartoPoint(point_name,
-                                   point_file,
                                    coordinates=xyz,
                                    tags=tag_names,
-                                   parent=self,
-                                   egm_names_from_pos=egm_names_from_pos)
+                                   parent=self)
+            new_point.import_point(point_file,
+                                   egm_names_from_pos=egm_names_from_pos
+                                   )
             points.append(new_point)
 
         return points
@@ -1810,10 +1820,9 @@ class CartoPoint(EPPoint):
 
     """
 
-    def __init__(self, name, point_file,
+    def __init__(self, name,
                  coordinates=np.full((3, 1), np.nan, dtype=float),
                  tags=None,
-                 egm_names_from_pos=False,
                  parent=None):
         """
         Constructor.
@@ -1821,20 +1830,42 @@ class CartoPoint(EPPoint):
         Parameters:
              name : str
                 name / identifier for this point
-            point_file : str
-                name of this points XML file
-                <map_name>_<point_name>_Point_Export.xml
             coordinates : ndarray(3, 1)
                 cartesian coordinates of recording position
             tags: list of str (optional)
                 tags assigned to this point, i.e. 'Full_name' in study's
                 TagsTable
-            egm_names_from_pos : bool (optional)
-                get names of EGM traces from electrode positions
-                NOTE: second unipolar channel name and coordinates are only
-                valid if this is True
             parent : CartoMap
                 the map this point belongs to
+
+        Returns:
+            None
+
+        """
+
+        super().__init__(name, coordinates=coordinates, parent=parent)
+
+        # add Carto3 specific attributes
+        self.pointFile = ''
+        self.barDirection = None
+        self.tags = tags
+        self.ecgFile = None
+        self.uniX = np.full((3, 1), np.nan, dtype=np.float32)
+        self.forceFile = None
+        self.forceData = None
+
+    def import_point(self, point_file, egm_names_from_pos=False):
+        """
+        Load data associated with this point.
+
+        Parameters:
+            point_file : str
+                name of this points XML file
+                <map_name>_<point_name>_Point_Export.xml
+            egm_names_from_pos : boolean
+                If True, EGM electrode names are extracted from positions file.
+                This also returns name and coordinates of the second unipolar
+                channel.
 
         Raises:
             FileNotFoundError : if point's XML is not found
@@ -1844,47 +1875,19 @@ class CartoPoint(EPPoint):
 
         """
 
-        super().__init__(name, coordinates=coordinates, parent=parent)
+        log.debug('Loading point data for point {}'.format(self.name))
 
         file_loc = self.parent.parent.repository.join(point_file)
         if not self.parent.parent.repository.is_file(file_loc):
             log.info('Points export file {} does not exist'
                      .format(point_file))
             raise FileNotFoundError
-
-        # add Carto3 specific attributes
         self.pointFile = point_file
-        self.barDirection = None
-        self.woi = np.array([])
-        self.tags = tags
-        self.ecgFile = None
-        self.uniX = np.full((3, 2), np.nan, dtype=float)
-        self.forceFile = None
-        self.forceData = None
-
-        self.load(egm_names_from_pos=egm_names_from_pos)
-
-    def load(self, egm_names_from_pos=False):
-        """
-        Load data associated with this point.
-
-        Parameters:
-            egm_names_from_pos : boolean
-                If True, EGM electrode names are extracted from positions file.
-                This also returns name and coordinates of the second unipolar
-                channel.
-
-        Returns:
-            None
-
-        """
-
-        log.debug('Loading point data for point {}'.format(self.name))
 
         # read annotation data
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         annotation_item = root.find('Annotations')
         self.refAnnotation = int(annotation_item.get('Reference_Annotation'))
