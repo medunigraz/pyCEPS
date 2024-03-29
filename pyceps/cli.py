@@ -29,7 +29,9 @@ from argparse import ArgumentParser, Action
 import logging
 import tempfile
 from typing import Tuple
+import xml.etree.ElementTree as ET
 
+from pyceps.datatypes.study import EPStudy
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
 
@@ -317,33 +319,57 @@ def load_study(args):
         logger.info('importing {} study'.format(args.system))
         if args.system == 'CARTO':
             study = CartoStudy(args.study_repository,
+                               pwd=args.password,
                                encoding=args.encoding)
+            study.import_study()
         elif args.system == 'PRECISION':
             study = PrecisionStudy(args.study_repository,
+                                   pwd=args.password,
                                    encoding=args.encoding)
         else:
             raise KeyError('unknown EAM system specified!')
 
     else:
-        study_pkg = os.path.abspath(args.pkl_file)
-        logger.info('loading {} study PKL'.format(args.system))
+        study_file = os.path.abspath(args.study_file)
+        logger.info('loading study from file {}'.format(study_file))
+
         # read in study from a pkl file
         # Note: both inputs are mutually exclusive
-        if not study_pkg.lower().endswith(('.pkl', '.pkl.gz')):
+        if not study_file.lower().endswith('.pyceps'):
             # supposedly reading the carto folder directly
-            study_pkg += '.pkl'
+            study_file += '.pyceps'
 
-        if not os.path.isfile(study_pkg):
-            raise FileNotFoundError('could not find {}'.format(study_pkg))
+        if not os.path.isfile(study_file):
+            raise FileNotFoundError('could not find {}'.format(study_file))
 
         # update argument in case of later usage
-        args.study_pkg = study_pkg
+        args.study_file = study_file
 
         # now we can load the object
-        if args.system == 'CARTO':
-            study = CartoStudy.load(study_pkg, root=args.change_root)
-        elif args.system == 'PRECISION':
-            study = PrecisionStudy.load(study_pkg, root=args.change_root)
+        try:
+            with open(study_file) as fid:
+                xml_root = ET.parse(fid).getroot()
+        except ET.ParseError:
+            logger.warning('unknown file format, aborting!')
+            return None, args
+
+        # get EAM system
+        system = xml_root.get('system')
+        repo = xml_root.find('Repository')
+
+        if system.lower() == 'carto3':
+            study = CartoStudy(study_repo=repo.get('base'),
+                               pwd=args.password,
+                               encoding=repo.get('encoding'))
+            study.load(xml_root)
+            if args.change_root:
+                study.set_root(args.change_root)
+            else:
+                study.set_root(study.repository.get_base_string())
+
+        elif args.system == 'precision':
+            study = PrecisionStudy.load(study_file, root=args.change_root)
+
         else:
             raise KeyError('unknown EAM system specified!')
         # TODO: notification if root has changed (needed to process unsaved changes)
