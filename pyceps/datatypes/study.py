@@ -1114,7 +1114,7 @@ class EPPoint:
     """
 
     def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=float),
+                 coordinates=np.full((3, 1), np.nan, dtype=np.float32),
                  parent=None):
         """
         Constructor.
@@ -1140,6 +1140,7 @@ class EPPoint:
         # location info
         self.recX = coordinates
         self.prjX = np.full((3, 1), np.nan, dtype=float)
+        self.prjX = np.full((3, 1), np.nan, dtype=np.float32)
         self.prjDistance = np.nan
 
         # annotation info
