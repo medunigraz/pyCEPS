@@ -828,7 +828,7 @@ class CartoStudy(EPStudy):
             if not tmp_root.root:
                 # dummy repo was not initialized properly, so root is invalid
                 return False
-            return self._locate_study_xml(tmp_root, pwd=pwd) is not None
+            return self.locate_study_xml(tmp_root, pwd=pwd) is not None
 
         return False
 
@@ -855,9 +855,8 @@ class CartoStudy(EPStudy):
 
         # study XML was found, check if it is the same study
         root = Repository(root_dir)
-        study_info = self._locate_study_xml(root,
-                                            pwd=self.pwd,
-                                            encoding=self.encoding)
+        study_info = self.locate_study_xml(root, pwd=self.pwd,
+                                           encoding=self.encoding)
         if not study_info:
             # should never happen...
             raise FileNotFoundError
@@ -876,10 +875,10 @@ class CartoStudy(EPStudy):
         return True
 
     @staticmethod
-    def _locate_study_xml(repository,
-                          pwd='',
-                          regex=r'^((?!Export).)*.xml$',
-                          encoding='cp1252'):
+    def locate_study_xml(repository,
+                         pwd='',
+                         regex=r'^((?!Export).)*.xml$',
+                         encoding='cp1252'):
         """
         Locate study XML in Carto repository. A file is considered valid if
         it starts with '<Study name='.
@@ -927,7 +926,7 @@ class CartoStudy(EPStudy):
         for folder in folders:
             # update root location and start new search there
             repository.update_root(repository.join(folder))
-            return CartoStudy._locate_study_xml(repository)
+            return CartoStudy.locate_study_xml(repository)
 
         # XML was nowhere to be found
         return None
