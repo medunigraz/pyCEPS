@@ -20,7 +20,7 @@
 """
 Command line interface for pyEPmap
 """
-
+import argparse
 import os
 import traceback
 import shutil
@@ -78,18 +78,9 @@ def get_args():
 
     parser = ArgumentParser(
         prog='pyceps',
+        # add_help=False,
         # formatter_class=RawTextHelpFormatter,
     )
-
-    # configure clinical mapping system from which to import
-    system = parser.add_argument_group('Clinical Mapping System')
-    system.add_argument('--system',
-                        required=True,
-                        type=str.upper,
-                        choices=['CARTO', 'PRECISION'],
-                        help='Specify the clinical mapping system that '
-                             'recorded the study.'
-                        )
 
     # specify location of data
     # Note: subsequent arguments are mutually exclusive. The user must enter
@@ -101,10 +92,11 @@ def get_args():
         type=str,
         default=None,
         help='Import study from EAM repository.\n'
-             'Specify path to folder or to ZIP file containing study data.'
+             'Specify path to folder or to ZIP file containing study data.\n'
+             'IMPORTANT: use --system to specify EAM system!'
     )
     load.add_argument(
-        '--pkl-file',
+        '--study-file',
         type=str,
         default=None,
         help='Load study from previously created .pkl file.\n'
@@ -257,8 +249,29 @@ def get_args():
         default='cp1252',
         help='Set encoding for file imports. Default: "cp1252".'
     )
+    misc.add_argument('--password',
+                      type=str,
+                      default='',
+                      help='Password for protected archives.'
+                      )
 
-    return parser.parse_args()
+    main_args, _ = parser.parse_known_args()
+
+    # configure clinical mapping system from which to import
+    conditional_parser = argparse.ArgumentParser(parents=[parser],
+                                                 add_help=False
+                                                 )
+    if main_args.study_repository:
+        system = conditional_parser.add_argument_group('Clinical Mapping System')
+        system.add_argument('--system',
+                            required=main_args.study_repository,
+                            type=str.upper,
+                            choices=['CARTO', 'PRECISION'],
+                            help='Specify the clinical mapping system that '
+                                 'recorded the study.'
+                            )
+
+    return conditional_parser.parse_args()
 
 
 def configure_logger(log_level: str) -> Tuple[int, str]:
@@ -420,7 +433,7 @@ def execute_commands(args):
     if import_maps:
         logger.info('need to import map(s): {}'.format(import_maps))
 
-        if args.pkl_file and not study.is_root_valid():
+        if args.study_file and not study.is_root_valid():
             logger.warning('a valid study root is necessary to import maps!')
         else:
             study.import_maps(study.mapNames,
