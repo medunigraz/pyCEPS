@@ -673,7 +673,7 @@ class CartoStudy(EPStudy):
         # load mapping procedures
         proc_item = root.find('Procedures')
         num_procedures = proc_item.get('count')
-        sep = str(proc_item.get('sep'))
+        sep = chr(int(proc_item.get('sep')))
         self.mapNames = proc_item.get('names').split(sep)
         self.mapPoints = (np.array(proc_item.get('points').split(sep))
                           .astype(np.int32))
