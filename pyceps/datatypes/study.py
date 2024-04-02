@@ -372,7 +372,7 @@ class EPStudy:
             proc = ET.SubElement(procedures, 'Procedure', name=cmap.name)
 
             # add surface mesh
-            xml_add_binary_surface(proc, 'Mesh', cmap.surface)
+            xml_add_binary_surface(proc, cmap.surface)
 
             # add mapping points
             points = ET.SubElement(proc, 'Points',
@@ -398,10 +398,10 @@ class EPStudy:
                 xml_add_binary_numpy(points, key, np.array(data))
 
             # add representative body surface ECGs
-            xml_add_binary_bsecg(proc, 'BSECGS', cmap.bsecg)
+            xml_add_binary_bsecg(proc, cmap.bsecg)
 
             # add lesion data
-            xml_add_binary_lesion(proc, 'Lesions', cmap.lesions)
+            xml_add_binary_lesion(proc, cmap.lesions)
 
         return root, filepath
 

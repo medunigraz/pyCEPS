@@ -115,7 +115,7 @@ def xml_add_binary_trace(root: ET.Element,
             XML Element the data is added to
         name : str
             name of the data array
-        data : np.ndarray
+        data : Trace, list of Trace
             data to be added
 
     Returns:
@@ -154,7 +154,6 @@ def xml_add_binary_trace(root: ET.Element,
 
 
 def xml_add_binary_surface(root: ET.Element,
-                           name: str,
                            data,
                            **kwargs):
     """
@@ -188,16 +187,14 @@ def xml_add_binary_surface(root: ET.Element,
     Parameters:
         root : ET.Element
             XML Element the data is added to
-        name : str
-            name of the data array
-        data : np.ndarray
+        data : Surface
             data to be added
 
     Returns:
         None
     """
 
-    element = ET.SubElement(root, name,
+    element = ET.SubElement(root, 'Mesh',
                             numVertices=str(
                              data.X.shape[0]),
                             numTriangles=str(
@@ -236,47 +233,107 @@ def xml_add_binary_surface(root: ET.Element,
 
 
 def xml_add_binary_lesion(root: ET.Element,
-                          name: str,
                           data,
                           **kwargs
                           ):
-    """Create etree Lesions with binary data."""
+    """Create etree Lesions with binary data.
 
-    lesions = ET.SubElement(root, 'Lesions',
+    XML attributes:
+        count : number of ablation sites
+
+        Example:
+            <Lesion
+                count=num_lesions>
+                <DataArray name="points"/>
+                <DataArray name="diameter"/>
+                <DataArray name="RFI"/>
+                <DataArray name="name"/>
+            </>
+
+    Data is saved as base64 encoded bytes string.
+    Extra attributes can be added by keyword arguments.
+
+    Parameters:
+        root : ET.Element
+            XML Element the data is added to
+        data : list of Lesion
+            data to be added
+
+    Returns:
+        None
+    """
+
+    element = ET.SubElement(root, 'Lesions',
                             count=str(len(data))
                             )
+    # add extra attributes
+    for key, value in kwargs:
+        element.set(key, value)
 
-    xml_add_binary_numpy(lesions, 'points',
+    xml_add_binary_numpy(element, 'points',
                          np.array([site.X for site in data])
                          )
-    xml_add_binary_numpy(lesions, 'diameter',
+    xml_add_binary_numpy(element, 'diameter',
                          np.array([site.diameter for site in data])
                          )
-    xml_add_binary_numpy(lesions, 'RFI',
+    xml_add_binary_numpy(element, 'RFI',
                          np.array([x.value for site in data
                                    for x in site.RFIndex])
                          )
-    xml_add_binary_numpy(lesions, 'name',
+    xml_add_binary_numpy(element, 'name',
                          np.array([x.name for site in data
                                    for x in site.RFIndex])
                          )
 
 
 def xml_add_binary_bsecg(root: ET.Element,
-                         name: str,
                          data,
                          **kwargs):
-    """Create etree BodySurfaceECG with binary data."""
+    """Create etree BodySurfaceECG with binary data.
 
-    bsecgs = ET.SubElement(root, name,
-                           count=str(len(data))
-                           )
+    XML attributes:
+        count : number of body surface ECGs
+
+        Example:
+            <BSECG
+                count=num_bsecgs>
+                <BSECG
+                    method=generation_method
+                    count=num_ECG_traces
+                    refAnnotation=ref_time_stamp>
+                    <Traces
+                        name=generation_method,
+                        count=num_ECG_traces>
+                        <Trace>
+                            <DataArray/>
+                            <DataArray/>
+                            ...
+                        </>
+                    </>
+            </>
+
+    Data is saved as base64 encoded bytes string.
+    Extra attributes can be added by keyword arguments.
+
+    Parameters:
+        root : ET.Element
+            XML Element the data is added to
+        data : BodySurfaceECG
+            data to be added
+
+    Returns:
+        None
+    """
+
+    element = ET.SubElement(root, 'BSECGS',
+                            count=str(len(data))
+                            )
     # add extra attributes
     for key, value in kwargs:
-        bsecgs.set(key, value)
+        element.set(key, value)
 
     for trace in data:
-        item = ET.SubElement(bsecgs, 'BSECG',
+        item = ET.SubElement(element, 'BSECG',
                              method=trace.method,
                              count=str(len(trace.traces)),
                              refAnnotation=str(trace.refAnnotation),
@@ -285,7 +342,17 @@ def xml_add_binary_bsecg(root: ET.Element,
 
 
 def xml_load_binary_data(element: ET.Element):
-    """Load binary data from XML element."""
+    """
+    Load binary data from etree DataArray.
+
+    Parameters:
+        element : ET.Element
+            XML Element to read data from
+
+    Returns:
+        name : str
+        data : np.ndarray
+    """
 
     data_format = element.get('format')
     if not data_format.lower() == 'binary':
@@ -307,7 +374,16 @@ def xml_load_binary_data(element: ET.Element):
 
 
 def xml_load_binary_surface(element: ET.Element):
-    """Load binary Surface object from XML element."""
+    """
+    Load binary Surface object from etree element.
+
+    Parameters:
+        element : ET.Element
+            XML Element to read data from
+
+    Returns:
+        Surface
+    """
 
     numVerts = element.get('numVertices')
     numTris = element.get('numTriangles')
@@ -345,7 +421,18 @@ def xml_load_binary_surface(element: ET.Element):
 
 
 def xml_load_binary_trace(element: ET.Element):
-    """Load binary Surface object from XML element."""
+    """
+    Load binary Traces from etree element.
+
+    Parameters:
+        element : ET.Element
+            XML Element to read data from
+
+    Returns:
+        name : str
+        traces : list of Trace
+            dimension is (n_points x num_traces)
+    """
 
     trace_name = element.get('name')
     count = int(element.get('count'))
@@ -376,7 +463,16 @@ def xml_load_binary_trace(element: ET.Element):
 
 
 def xml_load_binary_bsecg(element: ET.Element):
-    """Load binary Surface object from XML element."""
+    """
+    Load binary BodySurfaceECG object from etree element.
+
+    Parameters:
+        element : ET.Element
+            XML Element to read data from
+
+    Returns:
+        list of BodySurfaceECG
+    """
 
     count = int(element.get('count'))
     bsecg = []
@@ -394,7 +490,16 @@ def xml_load_binary_bsecg(element: ET.Element):
 
 
 def xml_load_binary_lesion(element: ET.Element):
-    """Load binary Surface object from XML element."""
+    """
+    Load binary Lesion object from etree element.
+
+    Parameters:
+        element : ET.Element
+            XML Element to read data from
+
+    Returns:
+        list of Lesion
+    """
 
     count = int(element.get('count'))
     lesions = []
