@@ -94,7 +94,7 @@ class FileWriter:
         else:
             raise TypeError('Export of only triangles and quads is supported!')
 
-        self.log.info('exported elements to {}'.format(self._fileName))
+        self.log.debug('exported elements to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -116,7 +116,7 @@ class FileWriter:
                        comments='',
                        header=header)
 
-        self.log.info('exported fibers/sheets to {}'.format(self._fileName))
+        self.log.debug('exported fibers/sheets to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -134,7 +134,7 @@ class FileWriter:
                    comments='',
                    header=header)
 
-        self.log.info('exported points to {}'.format(self._fileName))
+        self.log.debug('exported points to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -154,7 +154,7 @@ class FileWriter:
                    comments='',
                    header=header)
 
-        self.log.info('exported points to {}'.format(self._fileName))
+        self.log.debug('exported points to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -170,7 +170,7 @@ class FileWriter:
             f.write('\n')  # meshalyzer needs CR at end of file
             f.flush()
 
-        self.log.info('exported data to {}'.format(self._fileName))
+        self.log.debug('exported data to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -189,7 +189,7 @@ class FileWriter:
             f.write('\n')  # meshalyzer needs CR at end of file
             f.flush()
 
-        self.log.info('exported data to {}'.format(self._fileName))
+        self.log.debug('exported data to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -283,7 +283,7 @@ class FileWriter:
                                )
                     f.write('\n')
 
-        self.log.info('exported data to {}'.format(self._fileName))
+        self.log.debug('exported data to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -296,7 +296,7 @@ class FileWriter:
         igb_obj.write(data.astype(np.single).T, header=header)
         igb_obj.close()
 
-        self.log.info('exported data to {}'.format(self._fileName))
+        self.log.debug('exported data to {}'.format(self._fileName))
 
         return self._fileName
 
@@ -309,6 +309,6 @@ class FileWriter:
             json_string = json.dumps(data_dict, **kwargs)
             f.write(json_string)
 
-        self.log.info('exported data to {}'.format(self._fileName))
+        self.log.debug('exported data to {}'.format(self._fileName))
 
         return self._fileName

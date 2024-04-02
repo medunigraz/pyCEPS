@@ -303,7 +303,7 @@ class EPStudy:
             ValueError : If user input is not recognised
 
         Returns:
-            None
+            str : file path PKL was saved to
         """
 
         if not self.maps:
@@ -371,6 +371,7 @@ class EPStudy:
         self.repository.base = study_base
 
         log.info('saved study to {}'.format(f_loc))
+        return f_loc
 
     def visualize(self, bgnd=None):
         """Visualize the study in dash."""
@@ -703,11 +704,12 @@ class EPMap:
 
         # create points files if necessary
         pts_file = '{}.pc.pts'.format(basename)
-        log.info('exporting mapping points cloud')
+        log.info('exporting mapping points cloud to {}'.format(pts_file))
         writer.dump(pts_file, mesh_points)
 
         pts_file = '{}.ppc.pts'.format(basename)
-        log.info('exporting mapping points projected on surface')
+        log.info('exporting mapping points projected on surface to {}'
+                 .format(pts_file))
         writer.dump(pts_file, surf_points)
 
         return
@@ -748,7 +750,7 @@ class EPMap:
             None
         """
 
-        log.info('exporting surface map data')
+        log.info('exporting EGM point data')
 
         if not points:
             points = self.get_valid_points()
@@ -774,34 +776,43 @@ class EPMap:
             data = [point.uniVoltage for point in points]
             dat_file = basename + '.ptdata.UNI.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "BIP" in which:
             data = [point.bipVoltage for point in points]
             dat_file = basename + '.ptdata.BIP.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "LAT" in which:
             data = [point.latAnnotation - point.refAnnotation
                     for point in points]
             dat_file = basename + '.ptdata.LAT.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "IMP" in which:
             data = [point.impedance for point in points]
             dat_file = basename + '.ptdata.IMP.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         if "FRC" in which:
             data = [point.force for point in points]
             dat_file = basename + '.ptdata.FRC.pc.dat'
             writer.dump(dat_file, data)
-            log.info('exported surface map data to {}'.format(dat_file))
+            log.info('exported point data to {}'.format(dat_file))
 
         return
+
+    def export_point_info(self, basename='', points=None):
+        """
+        Export additional point info.
+
+        Info for points differs on EP systems, needs to be implemented
+        in specific data type.
+        """
+        raise NotImplementedError
 
     def export_signal_maps(self, basename='', which=None):
         """
@@ -869,7 +880,7 @@ class EPMap:
             None
         """
 
-        log.info('exporting point egm data')
+        log.info('exporting point EGM data')
 
         if not points:
             points = self.get_valid_points()
@@ -1020,25 +1031,37 @@ class EPMap:
             basename = os.path.abspath(filename)
         export_file = os.path.join(basename, self.name + '.lesions')
 
-        # dump points
-        points = np.array([site.X for site in self.lesions])
-        writer.dump(export_file + '.pts', points)
-        writer.dump(export_file + '.pts_t', points)
-
-        # dump RFI
         # get RFIndex names
         names, counts = self.get_rfi_names(return_counts=True)
+
+        # check validity first
+        if not counts.sum() == len(self.lesions):
+            log.warning('cannot export RFI data! mismatch between lesion '
+                        'size ({}) and parameters (names: {}, sites: {})'
+                        .format(len(self.lesions), names, counts))
+            return
+
+        # dump RFI
         for name, count in zip(names, counts):
-            # check validity first
-            if not count == len(self.lesions):
-                log.warning('cannot export RFI data "{}", wrong number of '
-                            'data points: {}!'.format(name, count))
-                continue
-            rfi = [x.value for lesion in self.lesions for x in lesion.RFIndex
-                   if x.name == name]
+            # dump points
+            points = [site.X for site in self.lesions for x in site.RFIndex
+                      if x.name == name]
+            writer.dump(export_file + '.' + name + '.pts', np.array(points))
+            writer.dump(export_file + '.' + name + '.pts_t', np.array(points))
+
             # dump RFI data
+            rfi = [x.value for site in self.lesions for x in site.RFIndex
+                   if x.name == name]
             writer.dump(export_file + '.' + name + '.dat', np.array(rfi))
             writer.dump(export_file + '.' + name + '.dat_t', np.array(rfi))
+
+            # dump lesion diameters
+            d = [site.diameter for site in self.lesions for x in site.RFIndex
+                 if x.name == name]
+            writer.dump(export_file + '.' + name + '.diameter.dat',
+                        np.array(d))
+            writer.dump(export_file + '.' + name + '.diameter.dat_t',
+                        np.array(d))
 
     def get_rfi_names(self, return_counts=False):
         """Return unique RF parameter names in lesions data."""

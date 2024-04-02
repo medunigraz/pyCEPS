@@ -28,6 +28,7 @@ import sys
 from argparse import ArgumentParser, Action
 import logging
 import tempfile
+from typing import Tuple
 
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
@@ -237,6 +238,13 @@ def get_args():
              'Used only when data is loaded from PKL file.'
     )
     misc.add_argument(
+        '--egm-from-pos',
+        action='store_true',
+        help='Retrieve EGM channel names from recording positions.\n'
+             'This will add coordinates for the second unipolar EGM channel.\n'
+             'Note: Requires valid study root!'
+    )
+    misc.add_argument(
         '--logger-level',
         type=str,
         default='INFO',
@@ -253,7 +261,7 @@ def get_args():
     return parser.parse_args()
 
 
-def configure_logger(log_level: str) -> tuple[int, str]:
+def configure_logger(log_level: str) -> Tuple[int, str]:
     """
     Set logging console and file formats.
 
@@ -353,17 +361,14 @@ def export_map_data(study, map_name, args):
     # dump point data for recording points
     if args.dump_point_data:
         study.maps[map_name].export_point_data()
+        study.maps[map_name].export_point_info()
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:
-        if not study.is_root_valid():
-            logger.warning('a valid study root is necessary to dump ECG '
-                           'data for recording points!')
-        else:
-            study.maps[map_name].export_point_ecg(
-                which=(None if args.dump_point_ecgs == 'DEFAULT'
-                       else args.dump_point_ecgs)
-            )
+        study.maps[map_name].export_point_ecg(
+            which=(None if args.dump_point_ecgs == 'DEFAULT'
+                   else args.dump_point_ecgs)
+        )
 
     # dump EGM traces for recording points
     if args.dump_point_egms:
@@ -418,7 +423,8 @@ def execute_commands(args):
         if args.pkl_file and not study.is_root_valid():
             logger.warning('a valid study root is necessary to import maps!')
         else:
-            study.import_maps(study.mapNames)
+            study.import_maps(study.mapNames,
+                              egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
                 study.maps[map_name].import_lesions(directory=None)
@@ -478,10 +484,20 @@ def execute_commands(args):
         else:
             logger.warning('Unknown user input {}'.format(user_input))
 
+    pkl_loc = ''
     if args.save_study:
-        study.save(None if args.save_study == 'DEFAULT' else args.save_study)
+        pkl_loc = study.save(None if args.save_study == 'DEFAULT' else
+                             args.save_study)
 
-    return study
+    # redirect log file
+    log_file = pkl_loc.replace('.pkl', '_import.log') if pkl_loc else (
+        os.path.join(
+            study.build_export_basename(''),
+            study.name + '_import.log'
+        )
+    )
+
+    return study, log_file
 
 
 def run():
@@ -495,11 +511,7 @@ def run():
     ep_study = None
     log_file = os.path.join(os.getcwd(), 'import.log')
     try:
-        ep_study = execute_commands(cl_args)
-        # redirect log file
-        log_file = os.path.join(ep_study.build_export_basename(''),
-                                ep_study.name + '_import.log'
-                                )
+        ep_study, log_file = execute_commands(cl_args)
     except:
         logger.error('File import finished with errors!\n{}'
                      .format(traceback.format_exc()))
@@ -511,9 +523,14 @@ def run():
         logging.shutdown()
 
         # save log file to disk
-        os.close(log_fid)
-        shutil.copy(log_path, log_file)
-        print('import log saved to {}'.format(log_file))
+        if os.access(os.path.dirname(log_file), os.W_OK):
+            os.close(log_fid)
+            shutil.copy(log_path, log_file)
+            print('import log saved to {}'.format(log_file))
+        else:
+            print('cannot save log file, no write permission for {}'
+                  .format(log_file))
+            os.close(log_fid)
         os.remove(log_path)
 
     # everything is done, visualize if requested
@@ -527,6 +544,6 @@ if __name__ == '__main__':
         'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
         'This program comes with ABSOLUTELY NO WARRANTY;\n'
         'This is free software, and you are welcome to redistribute '
-        'it under certain conditions; see LICENSE.txt for details.'
+        'it under certain conditions; see LICENSE.txt for details.\n'
     )
     run()
