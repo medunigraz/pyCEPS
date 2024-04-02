@@ -384,14 +384,16 @@ class EPStudy:
                     continue
 
                 data = [getattr(p, key) for p in cmap.points]
-                is_trace = (all([isinstance(e, Trace) for e in data])
-                            or (isinstance(data[0], list)
-                                and all([isinstance(e, Trace) for e in data[0]])
+                # handle maps with no points
+                if data:
+                    is_trace = (all([isinstance(e, Trace) for e in data])
+                                or (isinstance(data[0], list)
+                                    and all([isinstance(e, Trace) for e in data[0]])
+                                    )
                                 )
-                            )
-                if is_trace:
-                    xml_add_binary_trace(points, key, data)
-                    continue
+                    if is_trace:
+                        xml_add_binary_trace(points, key, data)
+                        continue
 
                 xml_add_binary_numpy(points, key, np.array(data))
 
