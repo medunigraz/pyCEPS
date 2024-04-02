@@ -213,7 +213,7 @@ class EPStudy:
     def is_root_valid(self, root_dir=None):
         raise NotImplementedError
 
-    def set_root(self, root_dir):
+    def set_repository(self, root_dir):
         raise NotImplementedError
 
     @classmethod

@@ -656,7 +656,7 @@ class CartoStudy(EPStudy):
 
         # try to set root if explicitly given
         if root:
-            if obj.set_root(os.path.abspath(root)):
+            if obj.set_repository(os.path.abspath(root)):
                 log.info('setting study root to {}'.format(root))
                 return obj
             else:
@@ -665,14 +665,15 @@ class CartoStudy(EPStudy):
                          .format(root))
 
         # try to re-set previous study root
-        if obj.set_root(obj.repository.base):
+        if obj.set_repository(obj.repository.base):
             log.info('previous study root is still valid ({})'
                      .format(obj.repository.root))
             return obj
 
         # no valid root found so far, set to pkl directory
         log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.repository.update_root(os.path.dirname(os.path.abspath(filename)))
+        obj.repository.base = os.path.abspath(filename)
+        obj.repository.root = os.path.dirname(os.path.abspath(filename))
         return obj
 
     def export_additional_meshes(self, filename=''):
@@ -832,7 +833,7 @@ class CartoStudy(EPStudy):
 
         return False
 
-    def set_root(self, root_dir):
+    def set_repository(self, root_dir):
         """
         Change path to root directory. Overrides BaseClass method.
         If new root directory is invalid, it is not changed.
