@@ -96,19 +96,23 @@ def xml_add_binary_surface(root: ET.Element,
                            **kwargs):
     """Create etree Surface with binary data."""
 
-    mesh = ET.SubElement(root, name,
-                         numVertices=str(
+    element = ET.SubElement(root, name,
+                            numVertices=str(
                              data.X.shape[0]),
-                         numTriangles=str(
+                            numTriangles=str(
                              data.tris.shape[0]),
-                         )
+                            )
+
+    # add extra attributes
+    for key, value in kwargs:
+        element.set(key, value)
 
     # add triangulation data
-    xml_add_binary_numpy(mesh, 'vertices', data.X)
-    xml_add_binary_numpy(mesh, 'triangulation', data.tris)
+    xml_add_binary_numpy(element, 'vertices', data.X)
+    xml_add_binary_numpy(element, 'triangulation', data.tris)
 
     # add surface labels
-    surf_labels = ET.SubElement(mesh, 'SurfaceLabels',
+    surf_labels = ET.SubElement(element, 'SurfaceLabels',
                                 count=str(len(data.labels))
                                 )
     for label in data.labels:
@@ -119,7 +123,7 @@ def xml_add_binary_surface(root: ET.Element,
         xml_add_binary_numpy(s_label, label.name, label.values)
 
     # add surface parameter maps
-    surf_maps = ET.SubElement(mesh, 'SignalMaps',
+    surf_maps = ET.SubElement(element, 'SignalMaps',
                               count=str(len(data.signalMaps))
                               )
     for signal_map in data.signalMaps:
