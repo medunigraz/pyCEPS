@@ -32,7 +32,34 @@ def xml_add_binary_numpy(root: ET.Element,
     """
     Create etree DataArray with binary numpy data.
 
-    Extra attributes can be added by keyword arguments
+    XML attributes:
+        type : np.dtype extracted from data
+        name : name of the DataArray
+        numberOfComponents : dimension of data along axis=1
+        format : always "binary"
+
+        Example:
+            <DataArray
+                type=np.dtype
+                name=name,
+                numberOfComponents=n
+                format="binary">
+                DATA
+            </>
+
+    Data is saved as base64 encoded bytes string.
+    Extra attributes can be added by keyword arguments.
+
+    Parameters:
+        root : ET.Element
+            XML Element the data is added to
+        name : str
+            name of the data array
+        data : np.ndarray
+            data to be added
+
+    Returns:
+        None
     """
 
     try:
@@ -49,6 +76,7 @@ def xml_add_binary_numpy(root: ET.Element,
                             )
     # add data
     element.text = base64.b64encode(data.tobytes()).decode('utf-8')
+
     # add extra attributes
     for key, value in kwargs:
         element.set(key, value)
@@ -58,7 +86,41 @@ def xml_add_binary_trace(root: ET.Element,
                          name: str,
                          data,
                          **kwargs):
-    """Create etree Trace with binary data."""
+    """
+    Create etree Trace with binary data.
+
+    XML attributes:
+        name : name of the DataArray
+        count : number of traces in data
+
+        Example:
+            <Traces
+                name=name,
+                count=numTraces>
+                <Trace>
+                    <DataArray/>
+                    <DataArray/>
+                    ...
+                </>
+            </>
+
+    For each trace DataArrays for trace names ("name"), sampling frequency (
+    "fs"), and data ("data") are added.
+    Data is saved trace-wise with dimension (n_components x n_points).
+    Data is saved as base64 encoded bytes string.
+    Extra attributes can be added by keyword arguments.
+
+    Parameters:
+        root : ET.Element
+            XML Element the data is added to
+        name : str
+            name of the data array
+        data : np.ndarray
+            data to be added
+
+    Returns:
+        None
+    """
 
     if not any(isinstance(el, list) for el in data):
         # single trace for each point, make list of lists to process
@@ -70,6 +132,7 @@ def xml_add_binary_trace(root: ET.Element,
     traces = ET.SubElement(root, 'Traces',
                            name=name,
                            count=str(len(data)))
+
     # add extra attributes
     for key, value in kwargs:
         traces.set(key, value)
@@ -94,7 +157,45 @@ def xml_add_binary_surface(root: ET.Element,
                            name: str,
                            data,
                            **kwargs):
-    """Create etree Surface with binary data."""
+    """
+    Create etree Surface with binary data.
+
+    XML attributes:
+        numVertices : number of vertices
+        numTriangles : number of faces
+
+        Example:
+            <Mesh
+                numVertices=n_verts,
+                numTriangles=n_tris>
+                <DataArray name="vertices"/>
+                <DataArray name="triangulation"/>
+                <SurfaceLabels count=n_labels>
+                    <SurfaceLabel location="pointData" or "cellData">
+                        <DataArray/>
+                    </>
+                </>
+                <SignalMaps count=n_labels>
+                    <SignalMap location="pointData" or "cellData">
+                        <DataArray/>
+                    </>
+                </>
+            </>
+
+    Data is saved as base64 encoded bytes string.
+    Extra attributes can be added by keyword arguments.
+
+    Parameters:
+        root : ET.Element
+            XML Element the data is added to
+        name : str
+            name of the data array
+        data : np.ndarray
+            data to be added
+
+    Returns:
+        None
+    """
 
     element = ET.SubElement(root, name,
                             numVertices=str(
