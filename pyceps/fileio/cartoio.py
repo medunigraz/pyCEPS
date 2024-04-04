@@ -635,7 +635,7 @@ class CartoStudy(EPStudy):
         Parameters:
             file : str
                 location of .pyceps file
-            set_repository : str
+            repo_path : str
                 path to repository
 
         Raises:
