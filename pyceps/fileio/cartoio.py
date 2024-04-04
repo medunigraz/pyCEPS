@@ -681,8 +681,7 @@ class CartoStudy(EPStudy):
         num_procedures = proc_item.get('count')
         sep = chr(int(proc_item.get('sep')))
         self.mapNames = proc_item.get('names').split(sep)
-        self.mapPoints = (np.array(proc_item.get('points').split(sep))
-                          .astype(np.int32))
+        self.mapPoints = proc_item.get('points').split(sep)
 
         for proc in proc_item.iter('Procedure'):
             name = proc.get('name')
