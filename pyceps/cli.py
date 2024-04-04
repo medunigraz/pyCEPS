@@ -517,10 +517,14 @@ def execute_commands(args):
 
     # save study
     if not args.save_study and data_changed:
+        logger.debug('unsaved changes found!')
         user_input = input('There are unsaved changes, save them now? [Y/N] ')
         # input validation
         if user_input.lower() in ('y', 'yes'):
+            logger.debug('user selected to save changes')
             args.save_study = 'DEFAULT'
+        elif user_input.lower() in ('n', 'no'):
+            logger.debug('user selected to continue without saving changes')
         else:
             logger.warning('Unknown user input {}'.format(user_input))
 
