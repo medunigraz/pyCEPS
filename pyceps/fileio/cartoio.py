@@ -238,7 +238,7 @@ class CartoStudy(EPStudy):
         item = root.find('Meshes')
         if item:
             matrix = np.asarray(item.find('RegistrationMatrix').text.split(),
-                                dtype=float)
+                                dtype=np.float32)
             meshes = []
             for mesh in item.findall('Mesh'):
                 meshes.append(mesh.get('FileName'))
@@ -664,8 +664,14 @@ class CartoStudy(EPStudy):
         # load additional meshes
         mesh_item = root.find('AdditionalMeshes')
         if int(mesh_item.get('count')) > 0:
-            reg_matrix = np.array(mesh_item.get('registrationMatrix'))
-            file_names = xml_load_binary_data(mesh_item.find('DataArray'))
+            _, reg_matrix = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'registrationMatrix'][0]
+            )
+            _, file_names = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'fileNames'][0]
+            )
             self.meshes = Mesh(registrationMatrix=reg_matrix,
                                fileNames=file_names
                                )

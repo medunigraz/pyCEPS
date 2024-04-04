@@ -357,13 +357,13 @@ class EPStudy:
         # add additional meshes
         if self.meshes:
             count = str(len(self.meshes.fileNames))
-            reg_matrix = self.meshes.registrationMatrix
             meshes_item = ET.SubElement(root, 'AdditionalMeshes',
                                         count=count,
-                                        registrationMatrix=reg_matrix
                                         )
             xml_add_binary_numpy(meshes_item, 'fileNames',
                                  np.array(self.meshes.fileNames))
+            xml_add_binary_numpy(meshes_item, 'registrationMatrix',
+                                 np.array(self.meshes.registrationMatrix))
 
         # add mapping procedures
         sep = ';'
