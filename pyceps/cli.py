@@ -31,7 +31,6 @@ import tempfile
 from typing import Tuple
 import xml.etree.ElementTree as ET
 
-from pyceps.datatypes.study import EPStudy
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
 

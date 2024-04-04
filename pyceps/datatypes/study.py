@@ -40,7 +40,7 @@ from pyceps.fileio.xmlio import (xml_add_binary_numpy,
 from pyceps.interpolation import (inverse_distance_weighting,
                                   remove_redundant_points
                                   )
-from pyceps.datatypes.signals import Trace, BodySurfaceECG
+from pyceps.datatypes.signals import Trace
 from pyceps.visualize import get_dash_app
 
 
@@ -960,6 +960,7 @@ class EPMap:
             elif channel.upper() == 'UNI':
                 channel_data = np.asarray([x.egmUni[0].data
                                            for x in points])
+                # TODO: export 2nd unipolar channel
             elif channel.upper() == 'REF':
                 channel_data = np.asarray([x.egmRef.data for x in points])
             if channel_data.size == 0:
