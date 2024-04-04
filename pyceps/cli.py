@@ -362,11 +362,7 @@ def load_study(args):
             study = CartoStudy(study_repo=repo.get('base'),
                                pwd=args.password,
                                encoding=repo.get('encoding'))
-            study.load(xml_root)
-            if args.change_root:
-                study.set_root(args.change_root)
-            else:
-                study.set_root(study.repository.get_base_string())
+            study.load(study_file, repo_path=args.change_root)
 
         elif args.system == 'precision':
             study = PrecisionStudy.load(study_file, root=args.change_root)

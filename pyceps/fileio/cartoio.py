@@ -622,22 +622,21 @@ class CartoStudy(EPStudy):
 
         return grid_sites
 
-    def load(self, root: ET.Element):
+    def load(self, file: str,  repo_path: str = ''):
         """
         Load study from file. Overrides BaseClass method.
 
-        A previously saved pickled version of a CartoStudy object can be
+        A previously saved version of a CartoStudy object can be
         loaded. The objects <study_root> is set to the one stored in the
-        PKL file if valid. If not, the folder of the PKL is set as root
+        file if valid. If not, the folder of the PKL is set as root
         directory.
         The path to the Carto files can also be specified explicitly.
 
-        Note that loading to a string with pickle.loads() is about 10% faster
-        but probably consumes a lot more memory, so we'll skip that for now.
-
         Parameters:
-            root : xml.etree.Element
-                root element in .pyceps file
+            file : str
+                location of .pyceps file
+            set_repository : str
+                path to repository
 
         Raises:
             TypeError : If file is not Carto3
@@ -648,6 +647,9 @@ class CartoStudy(EPStudy):
         """
 
         log.debug('loading study')
+
+        with open(file) as fid:
+            root = ET.parse(fid).getroot()
 
         system = root.get('system')
         if not system.lower() == "carto3":
@@ -726,30 +728,28 @@ class CartoStudy(EPStudy):
             # now we can add the procedure to the study
             self.maps[name] = new_map
 
-        #
-        # # try to set root if explicitly given
-        # if root:
-        #     if study.set_root(os.path.abspath(root)):
-        #         log.info('setting study root to {}'.format(root))
-        #         return study
-        #     else:
-        #         log.info('cannot set study root to {}\n'
-        #                  'Trying to use root information from file'
-        #                  .format(root))
-        #
-        # # try to re-set previous study root
-        # if study.set_root(repo.get('base')):
-        #     log.info('previous study root is still valid ({})'
-        #              .format(study.repository.root))
-        #     return study
-        #
-        # # no valid root found so far, set to pkl directory
-        # log.warning('no valid study root found. Using file location!'.upper())
-        # study.repository.update_root(
-        #     os.path.dirname(os.path.abspath(filename))
-        # )
-        #
-        # return study
+        # try to set root if explicitly given
+        if repo_path:
+            if self.set_repository(os.path.abspath(repo_path)):
+                log.info('setting study root to {}'.format(repo_path))
+                return
+            else:
+                log.info('cannot set study root to {}\n'
+                         'Trying to use root information from file'
+                         .format(repo_path))
+
+        # try to re-set previous study root
+        base_path = root.find('Repository').get('root')
+        if self.set_repository(base_path):
+            log.info('previous study root is still valid ({})'
+                     .format(self.repository.root))
+            return
+
+        # no valid root found so far, set to pkl directory
+        log.warning(
+            'no valid study root found. Using file location!'.upper())
+        self.repository.base = os.path.abspath(file)
+        self.repository.root = os.path.dirname(os.path.abspath(file))
 
     def save(self, filepath=''):
         """
@@ -998,7 +998,6 @@ class CartoStudy(EPStudy):
             # should never happen...
             raise FileNotFoundError
 
-        log.info('found study XML at {}'.format(self.repository.root))
         if not self.studyXML == study_info['xml']:
             log.warning('name of study XML differs, will not change root!')
             return False
@@ -1008,6 +1007,7 @@ class CartoStudy(EPStudy):
 
         # change study root
         self.repository = root
+        log.info('found study XML at {}'.format(self.repository.root))
 
         return True
 
