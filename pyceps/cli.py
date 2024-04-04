@@ -101,8 +101,8 @@ def get_args():
         '--study-file',
         type=str,
         default=None,
-        help='Load study from previously created .pkl file.\n'
-             'If study root saved in PKL file does not point to a valid '
+        help='Load study from previously created pyCEPS file.\n'
+             'If study root saved in pyCEPS file does not point to a valid '
              'location, it can be set with --change-root'
     )
 
@@ -115,9 +115,9 @@ def get_args():
         const='ALL',
         help='Convenience function to export complete EAM data set.\n'
              'When importing from EAM repository all available maps are '
-             'loaded. When importing from PKL file all maps currently in PKL '
-             'are exported or --import-map might be used to import additional '
-             'map(s) before export.\n'
+             'loaded. When importing from pyCEPS file all maps currently in '
+             'the file are exported or --import-map might be used to import '
+             'additional map(s) before export.\n'
              'Alternatively a specific map name can be given.\n'
              'Calls all functions under Advanced Exports with default values.'
     )
@@ -126,9 +126,9 @@ def get_args():
         type=str,
         nargs='?',
         const='DEFAULT',
-        help='Save study as PKL file.\n'
+        help='Save study as pyCEPS file.\n'
              'Default location is folder above study root, default name is '
-             'study name e.g. <study_root>/../<study_name>.pkl\n'
+             'study name e.g. <study_root>/../<study_name>.pyceps\n'
              'Custom location and file name can be given alternatively.'
     )
 
@@ -164,7 +164,7 @@ def get_args():
              'surface labels are included.\n'
              'Note: surface maps can also be exported as .dat with '
              '"--dump-surface-map".\n'
-             'Default: <study_root>/../<map>.[pts,elem,vtk]'
+             'Default: <study_root>/../<map>.surf.[pts,elem,vtk]'
     )
     aio.add_argument(
         '--dump-point-data',
@@ -173,9 +173,11 @@ def get_args():
              'openCARP format.\n'
              'For each mapping point following data are exported: unipolar '
              'voltages (UNI), bipolar voltages (BIP) and local activation '
-             'time (LAT), impedance (IMP, if available), and contact force ('
-             'FRC, if available).'
-             'Default: <study_root>/../<map>.ptdata.UNI.pc.dat'
+             'time (LAT), point identifier (NAME), time stamps for '
+             'annotations (LAT, REF), window of interest (WOI_START, '
+             'WOI_END), impedance (IMP, if available), and contact force '
+             '(FRC, if available).\n'
+             'Default: <study_root>/../<map>.ptdata.<parameter>.pc.dat'
     )
     aio.add_argument(
         '--dump-point-ecgs',
@@ -185,21 +187,21 @@ def get_args():
         choices=['I', 'II', 'III',
                  'aVR', 'aVL', 'aVF',
                  'V1', 'V2', 'V3', 'V4', 'V5', 'V6'],
-        help='Export ecg traces for all valid points associated '
+        help='Export ECG traces for all valid points associated '
              'with current "--map" to IGB.\n'
              'Dimension: Nx2500 (valid recorded points x ms)\n'
              'Note: Requires valid study root!\n'
              'If no traces are specified, all surface ECGs are '
              'exported by default.\n'
-             'Default: <study_root>/../<map>.ecg.V1.pc.igb'
+             'Default: <study_root>/../<map>.ecg.<lead>.pc.igb'
     )
     aio.add_argument(
         '--dump-point-egms',
         action='store_true',
-        help='Export point EGMs for all valid points associated '
-             'with current "--map".\n'
+        help='Export point EGM traces for unipolar, bipolar and reference '
+             'channels for all valid points associated with current "--map".\n'
              'Dimension: Nx2500 (valid recorded nodes x ms)\n'
-             'Default: e.g. <study_root>/../<map>.egm.BIP.is.igb'
+             'Default: e.g. <study_root>/../<map>.egm.<lead>.pc.igb'
     )
     aio.add_argument(
         '--dump-map-ecgs',
@@ -212,7 +214,7 @@ def get_args():
         '--dump-surface-maps',
         action='store_true',
         help='Export surface maps associated with current "--map" to DAT.\n'
-             'Default: <study_root>/../<map>.map.BIP.dat'
+             'Default: <study_root>/../<map>.map.<parameter>.dat'
     )
     aio.add_argument(
         '--dump-lesions',
@@ -229,13 +231,13 @@ def get_args():
         help='Change location of EAM data repository.\n'
              'Parent directory of "--study-xml" for Carto3 or folder for '
              'Precision. Can be absolute path to folder or ZIP file.\n'
-             'Used only when data is loaded from PKL file.'
+             'Used only when data is loaded from pyCEPS file.'
     )
     misc.add_argument(
         '--egm-from-pos',
         action='store_true',
-        help='Retrieve EGM channel names from recording positions.\n'
-             'This will add coordinates for the second unipolar EGM channel.\n'
+        help='Retrieve EGM channel names from recording positions during '
+             'import.\n'
              'Note: Requires valid study root!'
     )
     misc.add_argument(
