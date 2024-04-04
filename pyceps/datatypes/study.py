@@ -22,6 +22,11 @@ from typing import Iterable
 import numpy as np
 import xml.etree.ElementTree as ET
 import webbrowser
+from importlib.metadata import version, PackageNotFoundError
+try:
+    PYCEPS_VERSION = version('pyceps')
+except PackageNotFoundError:
+    PYCEPS_VERSION = '0.0.0dev'
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes.surface import SurfaceSignalMap
@@ -339,7 +344,7 @@ class EPStudy:
         root = ET.Element('Study',
                           name=self.name,
                           system=self.system,
-                          version='0.1.0',
+                          version=PYCEPS_VERSION,
                           )
 
         # add repository info
