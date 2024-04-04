@@ -399,6 +399,11 @@ def xml_load_binary_surface(element: ET.Element):
     labels = []
     for label in element.find('SurfaceLabels').iter('SurfaceLabel'):
         l_name, data = xml_load_binary_data(label.find('DataArray'))
+        # add explicit 2nd dimension
+        try:
+            data.shape[1]
+        except IndexError:
+            data = np.expand_dims(data, axis=1)
         labels.append(SurfaceLabel(l_name,
                                    data,
                                    label.get('location'),
@@ -408,6 +413,11 @@ def xml_load_binary_surface(element: ET.Element):
     s_maps = []
     for s_map in element.find('SignalMaps').iter('SignalMap'):
         m_name, data = xml_load_binary_data(s_map.find('DataArray'))
+        # add explicit 2nd dimension
+        try:
+            data.shape[1]
+        except IndexError:
+            data = np.expand_dims(data, axis=1)
         s_maps.append(SurfaceSignalMap(m_name,
                                        data,
                                        s_map.get('location'),
