@@ -954,34 +954,48 @@ class EPMap:
 
         # store ecg traces as igb files
         writer = FileWriter()
-        channel_data = np.array([])
+        channel_data = {}  # key is the filename suffix including point cloud
         # save data channel-wise
         for channel in which:
             if channel.upper() == 'BIP':
-                channel_data = np.asarray([x.egmBip.data for x in points])
+                channel_data['BIP.pc'] = (
+                    np.asarray([x.egmBip.data for x in points])
+                )
+
             elif channel.upper() == 'UNI':
-                channel_data = np.asarray([x.egmUni[0].data
-                                           for x in points])
-                # TODO: export 2nd unipolar channel
+                channel_data['UNI.pc'] = (
+                    np.asarray([x.egmUni[0].data for x in points])
+                )
+                channel_data['UNI2.upc'] = (
+                    np.asarray([x.egmUni[1].data for x in points])
+                )
+                # export 2nd unipolar point cloud
+                uni2_points = np.array([point.uniX for point in points])
+                pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
+                writer.dump(pts_file, uni2_points)
+
             elif channel.upper() == 'REF':
-                channel_data = np.asarray([x.egmRef.data for x in points])
-            if channel_data.size == 0:
-                log.warning('no data found for channel {}, nothing to export!'
-                            .format(channel))
+                channel_data['REF.pc'] = (
+                    np.asarray([x.egmRef.data for x in points])
+                )
+
             # save data to igb
             # Note: this file cannot be loaded with the CARTO mesh but rather
             #       with the exported mapped nodes
-            header = {'x': channel_data.shape[0],
-                      't': channel_data.shape[1],
-                      'unites_t': 'ms',
-                      'unites': 'mV',
-                      'dim_t': channel_data.shape[0]-1, # (num_tsteps - 1) * inc_t
-                      'org_t': 0,
-                      'inc_t': 1}
+            for key, data in channel_data.items():
+                if data.size == 0:
+                    log.warning('no data found for channel {}!'.format(channel))
+                header = {'x': data.shape[0],
+                          't': data.shape[1],
+                          'unites_t': 'ms',
+                          'unites': 'mV',
+                          'dim_t': data.shape[0]-1,
+                          'org_t': 0,
+                          'inc_t': 1}
 
-            filename = '{}.egm.{}.pc.igb'.format(basename, channel)
-            f = writer.dump(filename, header, channel_data)
-            log.info('exported EGM trace {} to {}'.format(channel, f))
+                filename = '{}.egm.{}.igb'.format(basename, key)
+                f = writer.dump(filename, header, data)
+                log.info('exported EGM trace {} to {}'.format(channel, f))
 
         return
 
