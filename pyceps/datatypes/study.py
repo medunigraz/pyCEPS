@@ -370,7 +370,9 @@ class EPStudy:
         procedures = ET.SubElement(root, 'Procedures',
                                    count=str(len(self.maps.keys())),
                                    names=sep.join(self.mapNames),
-                                   points=sep.join(self.mapPoints),
+                                   points=sep.join(
+                                       [str(x) for x in self.mapPoints]
+                                   ),
                                    sep=str(ord(sep))
                                    )
         for cmap in self.maps.values():

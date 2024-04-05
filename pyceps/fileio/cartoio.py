@@ -250,7 +250,7 @@ class CartoStudy(EPStudy):
         map_points = []
         for item in root.iter('Map'):
             map_names.append(item.get('Name'))
-            map_points.append(item.find('CartoPoints').get('Count'))
+            map_points.append(int(item.find('CartoPoints').get('Count')))
             log.debug('found map {} with {} mapping points'
                       .format(map_names[-1], map_points[-1]))
 
@@ -683,7 +683,7 @@ class CartoStudy(EPStudy):
         num_procedures = proc_item.get('count')
         sep = chr(int(proc_item.get('sep')))
         self.mapNames = proc_item.get('names').split(sep)
-        self.mapPoints = proc_item.get('points').split(sep)
+        self.mapPoints = [int(x) for x in proc_item.get('points').split(sep)]
 
         for proc in proc_item.iter('Procedure'):
             name = proc.get('name')
