@@ -971,7 +971,13 @@ class EPMap:
                 )
                 # export 2nd unipolar point cloud
                 uni2_points = np.array([point.uniX for point in points])
+                # adjust ndarray dimensions
+                if uni2_points.ndim == 3:
+                    uni2_points = np.squeeze(uni2_points, axis=2)
                 pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
+                log.info('exporting mapping points cloud to {}'
+                         .format(pts_file)
+                         )
                 writer.dump(pts_file, uni2_points)
 
             elif channel.upper() == 'REF':
