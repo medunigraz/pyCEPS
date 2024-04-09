@@ -255,6 +255,24 @@ class Repository:
 
         self.root = self.build_path(path)
 
+    def get_base_string(self):
+        study_base = self.base
+        if isinstance(self.base, zipfile.Path):
+            study_base = os.path.abspath(self.base.root.filename)
+        if isinstance(self.base, py7zr.SevenZipFile):
+            study_base = os.path.abspath(self.base.filename)
+
+        return study_base
+
+    def get_root_string(self):
+        study_root = self.root
+        if isinstance(self.root, zipfile.Path):
+            study_root = os.path.abspath(self.root.root.filename)
+        if isinstance(self.root, py7zr.SevenZipFile):
+            study_root = os.path.abspath(self.root.filename)
+
+        return study_root
+
     def _path_is_file(self, filepath):
         return os.path.isfile(filepath)
 

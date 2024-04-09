@@ -93,8 +93,8 @@ def get_dash_app(study, bgnd=None):
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
 
         return (empty_figure(bgnd='rgb(255, 255, 255)')
-                if not (len(p_map.ecg) > 0)
-                else get_bsecg_figure(p_map.ecg, COLORS))
+                if not (len(p_map.bsecg) > 0)
+                else get_bsecg_figure(p_map.bsecg, COLORS))
 
     @app.callback(
         Output('surface-poly', 'points'),

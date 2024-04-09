@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 # pyCEPS allows to import, visualize and translate clinical EAM data.
 #     Copyright (C) 2023  Robert Arnold
 #
@@ -21,19 +20,27 @@ import logging
 import os
 from typing import Iterable
 import numpy as np
-import zipfile
-import gzip
-import pickle
+import xml.etree.ElementTree as ET
 import webbrowser
-
-import py7zr
+from importlib.metadata import version, PackageNotFoundError
+try:
+    PYCEPS_VERSION = version('pyceps')
+except PackageNotFoundError:
+    PYCEPS_VERSION = '0.0.0dev'
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes.surface import SurfaceSignalMap
 from pyceps.fileio import FileWriter
+from pyceps.fileio.xmlio import (xml_add_binary_numpy,
+                                 xml_add_binary_trace,
+                                 xml_add_binary_bsecg,
+                                 xml_add_binary_surface,
+                                 xml_add_binary_lesion
+                                 )
 from pyceps.interpolation import (inverse_distance_weighting,
                                   remove_redundant_points
                                   )
+from pyceps.datatypes.signals import Trace
 from pyceps.visualize import get_dash_app
 
 
@@ -141,7 +148,7 @@ class EPStudy:
         self.maps = {}
 
         # additional meshes, i.e. from CT data
-        self.meshes = []
+        self.meshes = None
 
     def import_study(self):
         raise NotImplementedError
@@ -213,12 +220,12 @@ class EPStudy:
     def is_root_valid(self, root_dir=None):
         raise NotImplementedError
 
-    def set_root(self, root_dir):
+    def set_repository(self, root_dir):
         raise NotImplementedError
 
-    @classmethod
-    def load(cls, filename, root=None):
-        raise NotImplemented
+    def load(self, file: str,  repo_path: str = ''):
+        """Load study object from .pyceps archive."""
+        raise NotImplementedError
 
     def list_maps(self, minimal=False):
         """
@@ -280,9 +287,9 @@ class EPStudy:
 
         return export_folder
 
-    def save(self, filepath='', gz=False):
+    def save(self, filepath=''):
         """
-        Save pickled version of study object.
+        Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
 
         By default, the filename is the study's name, but can also be
@@ -290,55 +297,30 @@ class EPStudy:
         If the file already exists, user interaction is required to either
         overwrite file or specify a new file name.
 
-        Using HIGHEST_PROTOCOL is almost 2X faster and creates a file that
-        is ~10% smaller. Load times go down by a factor of about 3X.
-
         Parameters:
             filepath : string (optional)
                 custom path for the output file
-            gz : boolean (optional)
-                use gzip compression or not
 
         Raises:
             ValueError : If user input is not recognised
 
         Returns:
-            str : file path PKL was saved to
+            root : ET.Element
+            str : file path .pyceps was saved to
         """
+
+        if not filepath:
+            filepath = os.path.join(self.build_export_basename(''),
+                                    self.name + '.pyceps')
+        if not filepath.lower().endswith('.pyceps'):
+            filepath += '.pyceps'
 
         if not self.maps:
             log.info('No maps imported, nothing to save!')
-            return
+            return None, filepath
 
-        if filepath:
-            if filepath.lower().endswith('.pkl'):
-                filepath = filepath[:-4]
-            f_loc = os.path.abspath(filepath)
-        else:
-            f_loc = os.path.join(self.build_export_basename(''), self.name)
-
-        # handle un-pickleable attributes
-        study_base = self.repository.base
-        study_root = self.repository.root
-        if isinstance(self.repository.root, zipfile.Path):
-            self.repository.root = os.path.abspath(
-                self.repository.root.root.filename
-            )
-        if isinstance(self.repository.base, zipfile.Path):
-            self.repository.base = os.path.abspath(
-                self.repository.base.root.filename
-            )
-        if isinstance(self.repository.root, py7zr.SevenZipFile):
-            self.repository.root = os.path.abspath(
-                self.repository.root.filename
-            )
-        if isinstance(self.repository.base, py7zr.SevenZipFile):
-            self.repository.base = os.path.abspath(
-                self.repository.base.filename
-            )
-
-        f_loc += '.gz' if gz else '.pkl'
-        if os.path.isfile(f_loc):
+        # check if file already exists
+        if os.path.isfile(filepath):
             user_input = input('Study object already exists, overwrite? [Y/N]')
             # input validation
             if user_input.lower() in ('y', 'yes'):
@@ -349,8 +331,8 @@ class EPStudy:
                     suffix = ''
                     while not suffix:
                         suffix = input('Suffix: ')
-                    f_loc, ext = os.path.splitext(f_loc)
-                    f_loc = f_loc + '_' + suffix + ext
+                    filepath, ext = os.path.splitext(filepath)
+                    filepath += '_' + suffix + ext
                 elif user_input.lower() in ('n', 'no'):
                     return
             else:
@@ -358,20 +340,77 @@ class EPStudy:
                 print('Error: Input {} unrecognised.'.format(user_input))
                 raise ValueError
 
-        if gz:
-            f = gzip.open(f_loc, 'wb')
-        else:
-            f = open(f_loc, 'wb')
+        # build XML
+        root = ET.Element('Study',
+                          name=self.name,
+                          system=self.system,
+                          version=PYCEPS_VERSION,
+                          )
 
-        pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-        f.close()
+        # add repository info
+        ET.SubElement(root, 'Repository',
+                      base=self.repository.get_base_string(),
+                      root=self.repository.get_root_string(),
+                      encoding=self.encoding
+                      )
 
-        # restore study root
-        self.repository.root = study_root
-        self.repository.base = study_base
+        # add additional meshes
+        if self.meshes:
+            count = str(len(self.meshes.fileNames))
+            meshes_item = ET.SubElement(root, 'AdditionalMeshes',
+                                        count=count,
+                                        )
+            xml_add_binary_numpy(meshes_item, 'fileNames',
+                                 np.array(self.meshes.fileNames))
+            xml_add_binary_numpy(meshes_item, 'registrationMatrix',
+                                 np.array(self.meshes.registrationMatrix))
 
-        log.info('saved study to {}'.format(f_loc))
-        return f_loc
+        # add mapping procedures
+        sep = ';'
+        procedures = ET.SubElement(root, 'Procedures',
+                                   count=str(len(self.maps.keys())),
+                                   names=sep.join(self.mapNames),
+                                   points=sep.join(
+                                       [str(x) for x in self.mapPoints]
+                                   ),
+                                   sep=str(ord(sep))
+                                   )
+        for cmap in self.maps.values():
+            proc = ET.SubElement(procedures, 'Procedure', name=cmap.name)
+
+            # add surface mesh
+            xml_add_binary_surface(proc, cmap.surface)
+
+            # add mapping points
+            points = ET.SubElement(proc, 'Points',
+                                   count=str(len(cmap.points))
+                                   )
+            for key in list(EPPoint('dummy', parent=cmap).__dict__):
+                if key == 'parent':
+                    # don't save this
+                    continue
+
+                data = [getattr(p, key) for p in cmap.points]
+                # handle maps with no points
+                if data:
+                    is_trace = (all([isinstance(e, Trace) for e in data])
+                                or (isinstance(data[0], list)
+                                    and all([isinstance(e, Trace) for e in data[0]])
+                                    )
+                                )
+                    if is_trace:
+                        xml_add_binary_trace(points, key, data)
+                        continue
+
+                xml_add_binary_numpy(points, key, np.array(data))
+
+            # add representative body surface ECGs
+            xml_add_binary_bsecg(proc, cmap.bsecg)
+
+            # add lesion data
+            xml_add_binary_lesion(proc, cmap.lesions)
+
+        return root, filepath
 
     def visualize(self, bgnd=None):
         """Visualize the study in dash."""
@@ -399,7 +438,7 @@ class EPMap:
             triangulated anatomical shell
         points : list of subclass EPPoints
             the mapping points recorded during mapping procedure
-        ecg : list of BodySurfaceECG
+        bsecg : list of BodySurfaceECG
             body surface ECG data for the mapping procedure
         lesions : list of Lesion
             ablation data for this mapping procedure
@@ -481,7 +520,7 @@ class EPMap:
         self.surfaceFile = ''
         self.surface = None
         self.points = []
-        self.ecg = []
+        self.bsecg = []
         self.lesions = []
 
     def get_valid_points(self, return_invalid=False):
@@ -503,6 +542,10 @@ class EPMap:
         return ([point for point in self.points if point.is_valid()],
                 [point for point in self.points if not point.is_valid()]
                 )
+
+    def import_map(self, *args, **kwargs):
+        """Import all relevant data."""
+        raise NotImplementedError
 
     def load_mesh(self, *args, **kwargs):
         """Load triangulated representation of the anatomical shell."""
@@ -579,8 +622,9 @@ class EPMap:
         surf_map = SurfaceSignalMap(name=which.upper(),
                                     values=interpolated.astype(np.single),
                                     location='pointData',
-                                    description='creationDate:{}'.format(
-                                        datetime.datetime)
+                                    description='creationDate: {}'.format(
+                                        datetime.datetime.now()
+                                        .strftime("%Y-%m-%d %H:%M:%S"))
                                     )
         self.surface.add_signal_maps(surf_map)
 
@@ -910,33 +954,48 @@ class EPMap:
 
         # store ecg traces as igb files
         writer = FileWriter()
-        channel_data = np.array([])
+        channel_data = {}  # key is the filename suffix including point cloud
         # save data channel-wise
         for channel in which:
             if channel.upper() == 'BIP':
-                channel_data = np.asarray([x.egmBip.data for x in points])
+                channel_data['BIP.pc'] = (
+                    np.asarray([x.egmBip.data for x in points])
+                )
+
             elif channel.upper() == 'UNI':
-                channel_data = np.asarray([x.egmUni[0].data
-                                           for x in points])
+                channel_data['UNI.pc'] = (
+                    np.asarray([x.egmUni[0].data for x in points])
+                )
+                channel_data['UNI2.upc'] = (
+                    np.asarray([x.egmUni[1].data for x in points])
+                )
+                # export 2nd unipolar point cloud
+                uni2_points = np.array([point.uniX for point in points])
+                pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
+                writer.dump(pts_file, uni2_points)
+
             elif channel.upper() == 'REF':
-                channel_data = np.asarray([x.egmRef.data for x in points])
-            if channel_data.size == 0:
-                log.warning('no data found for channel {}, nothing to export!'
-                            .format(channel))
+                channel_data['REF.pc'] = (
+                    np.asarray([x.egmRef.data for x in points])
+                )
+
             # save data to igb
             # Note: this file cannot be loaded with the CARTO mesh but rather
             #       with the exported mapped nodes
-            header = {'x': channel_data.shape[0],
-                      't': channel_data.shape[1],
-                      'unites_t': 'ms',
-                      'unites': 'mV',
-                      'dim_t': channel_data.shape[0]-1, # (num_tsteps - 1) * inc_t
-                      'org_t': 0,
-                      'inc_t': 1}
+            for key, data in channel_data.items():
+                if data.size == 0:
+                    log.warning('no data found for channel {}!'.format(channel))
+                header = {'x': data.shape[0],
+                          't': data.shape[1],
+                          'unites_t': 'ms',
+                          'unites': 'mV',
+                          'dim_t': data.shape[0]-1,
+                          'org_t': 0,
+                          'inc_t': 1}
 
-            filename = '{}.egm.{}.pc.igb'.format(basename, channel)
-            f = writer.dump(filename, header, channel_data)
-            log.info('exported EGM trace {} to {}'.format(channel, f))
+                filename = '{}.egm.{}.igb'.format(basename, key)
+                f = writer.dump(filename, header, data)
+                log.info('exported EGM trace {} to {}'.format(channel, f))
 
         return
 
@@ -967,7 +1026,7 @@ class EPMap:
 
         log.info('exporting body surface ECGs for map {}'.format(self.name))
 
-        if not self.ecg:
+        if not self.bsecg:
             log.warning('no body surface ECG data found, nothing to export...')
             return
 
@@ -977,7 +1036,7 @@ class EPMap:
 
         writer = FileWriter()
 
-        for bsecg in self.ecg:
+        for bsecg in self.bsecg:
             filename = '{}.bsecg.{}.json'.format(basename, bsecg.method)
 
             # build timeline
@@ -993,7 +1052,7 @@ class EPMap:
             for signal in bsecg.traces:
                 data_dict[signal.name] = signal.data.tolist()
 
-            bsecg_json['ecg'] = data_dict
+            bsecg_json['bsecg'] = data_dict
 
             f = writer.dump(filename, bsecg_json, indent=2)
             log.info('exported body surface ECG trace(s) {} to {}'
@@ -1094,6 +1153,8 @@ class EPPoint:
             annotation for reference detection in samples
         latAnnotation : int
             annotation for local activation time in samples
+        woi : ndarray (2, 1)
+            start and end timestamps of the WOI in samples
         uniVoltage : float
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
@@ -1114,7 +1175,7 @@ class EPPoint:
     """
 
     def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=float),
+                 coordinates=np.full((3, 1), np.nan, dtype=np.float32),
                  parent=None):
         """
         Constructor.
@@ -1139,12 +1200,13 @@ class EPPoint:
 
         # location info
         self.recX = coordinates
-        self.prjX = np.full((3, 1), np.nan, dtype=float)
+        self.prjX = np.full((3, 1), np.nan, dtype=np.float32)
         self.prjDistance = np.nan
 
         # annotation info
         self.refAnnotation = np.nan
         self.latAnnotation = np.nan
+        self.woi = np.full((2, 1), np.iinfo(int).min, dtype=int)
 
         # voltages
         self.uniVoltage = np.nan
@@ -1157,6 +1219,10 @@ class EPPoint:
 
         self.impedance = np.nan
         self.force = np.nan
+
+    def import_point(self, *args, **kwargs):
+        """Import relevant data."""
+        raise NotImplementedError
 
     def is_valid(self):
         """Check if this point is valid."""

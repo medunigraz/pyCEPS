@@ -683,7 +683,8 @@ class SurfaceLabel:
         return filename
 
 
-Mesh = namedtuple('Mesh', ['registrationMatrix', 'fileNames'])
+Mesh = namedtuple('Mesh', ['registrationMatrix',
+                           'fileNames'])
 Mesh.__doc__ = """
 Additional meshes.
 

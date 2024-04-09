@@ -20,15 +20,21 @@ import os
 import logging
 import zipfile
 import re
-import xml.etree.ElementTree as xml
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 import numpy as np
-import gzip
-import pickle
 import scipy.spatial.distance as sp_distance
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes import EPStudy, EPMap, EPPoint, Mesh
 from pyceps.fileio import FileWriter
+from pyceps.fileio.xmlio import (xml_add_binary_numpy,
+                                 xml_load_binary_data,
+                                 xml_load_binary_surface,
+                                 xml_load_binary_trace,
+                                 xml_load_binary_bsecg,
+                                 xml_load_binary_lesion
+                                 )
 from pyceps.fileio.cartoutils import (read_mesh_file,
                                       read_ecg_file_header, read_ecg_file,
                                       read_force_file,
@@ -129,17 +135,7 @@ class CartoStudy(EPStudy):
                          pwd=pwd,
                          encoding=encoding)
 
-        # locate study XML
-        log.info('Locating study XML in {}...'.format(self.repository))
-        study_info = self._locate_study_xml(self.repository,
-                                            pwd=self.pwd,
-                                            encoding=self.encoding)
-        if not study_info:
-            raise FileNotFoundError
-
-        log.info('found study XML at {}'.format(self.repository.root))
-        self.studyXML = study_info['xml']
-        self.name = study_info['name']
+        self.studyXML = ''
 
         self.units = None
         self.environment = None  # TODO: is this relevant info?
@@ -149,20 +145,30 @@ class CartoStudy(EPStudy):
         # visitag data
         self.visitag = Visitag()
 
-        self.import_study()
-
     def import_study(self):
         """
         Load study details and basic information from study XML.
         Overrides BaseClass method.
         """
 
+        # locate study XML
+        log.info('Locating study XML in {}...'.format(self.repository))
+        study_info = self.locate_study_xml(self.repository, pwd=self.pwd,
+                                           encoding=self.encoding)
+        if not study_info:
+            log.warning('cannot locate study XML!')
+            return
+
+        log.info('found study XML at {}'.format(self.repository.root))
+        self.studyXML = study_info['xml']
+        self.name = study_info['name']
+
         log.info('accessing study XML: {}'.format(self.studyXML))
         log.info('gathering study information...')
 
         xml_path = self.repository.join(self.studyXML)
         with self.repository.open(xml_path) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         log.debug('reading study units')
         study_units = root.find('Units')
@@ -232,7 +238,7 @@ class CartoStudy(EPStudy):
         item = root.find('Meshes')
         if item:
             matrix = np.asarray(item.find('RegistrationMatrix').text.split(),
-                                dtype=float)
+                                dtype=np.float32)
             meshes = []
             for mesh in item.findall('Mesh'):
                 meshes.append(mesh.get('FileName'))
@@ -244,7 +250,7 @@ class CartoStudy(EPStudy):
         map_points = []
         for item in root.iter('Map'):
             map_names.append(item.get('Name'))
-            map_points.append(item.find('CartoPoints').get('Count'))
+            map_points.append(int(item.find('CartoPoints').get('Count')))
             log.debug('found map {} with {} mapping points'
                       .format(map_names[-1], map_points[-1]))
 
@@ -289,9 +295,8 @@ class CartoStudy(EPStudy):
         for map_name in map_names:
             try:
                 log.info('importing map {}:'.format(map_name))
-                new_map = CartoMap(map_name, self.studyXML,
-                                   parent=self,
-                                   egm_names_from_pos=egm_names_from_pos)
+                new_map = CartoMap(map_name, self.studyXML, parent=self)
+                new_map.import_map(egm_names_from_pos=egm_names_from_pos)
                 self.maps[map_name] = new_map
             except Exception as err:
                 log.warning('failed to import map {}: {}'
@@ -617,63 +622,195 @@ class CartoStudy(EPStudy):
 
         return grid_sites
 
-    @classmethod
-    def load(cls, filename, root=None):
+    def load(self, file: str,  repo_path: str = ''):
         """
-        Load pickled version of a study. Overrides BaseClass method.
+        Load study from file. Overrides BaseClass method.
 
-        A previously saved pickled version of a CartoStudy object can be
+        A previously saved version of a CartoStudy object can be
         loaded. The objects <study_root> is set to the one stored in the
-        PKL file if valid. If not, the folder of the PKL is set as root
+        file if valid. If not, the folder of the PKL is set as root
         directory.
         The path to the Carto files can also be specified explicitly.
 
-        Note that loading to a string with pickle.loads() is about 10% faster
-        but probably consumes a lot more memory, so we'll skip that for now.
-
         Parameters:
-            filename : string
-                path to the .PKL or .GZ study file
-            root : string (optional)
-                set study root to this directory
+            file : str
+                location of .pyceps file
+            repo_path : str
+                path to repository
 
         Raises:
-            FileNotFoundError : if pickled file cannot be found
+            TypeError : If file is not Carto3
 
         Returns:
-            CartoStudy
+            None
 
         """
 
-        log.info('loading study from {}'.format(filename))
+        log.debug('loading study')
 
-        if filename.endswith('.gz'):
-            f = gzip.open(filename, 'rb')
-        else:
-            f = open(filename, 'rb')
-        obj = pickle.load(f)
-        f.close()
+        with open(file) as fid:
+            root = ET.parse(fid).getroot()
+
+        system = root.get('system')
+        if not system.lower() == "carto3":
+            raise TypeError('expected Carto3 system file, found {}'
+                            .format(system))
+
+        # load basic info
+        self.system = system
+        self.name = root.get('name')
+        self.studyXML = root.get('studyXML')
+        units = root.find('Units')
+        self.units = CartoUnits(units.get('distance'), units.get('angle'))
+
+        # load additional meshes
+        mesh_item = root.find('AdditionalMeshes')
+        if int(mesh_item.get('count')) > 0:
+            _, reg_matrix = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'registrationMatrix'][0]
+            )
+            _, file_names = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'fileNames'][0]
+            )
+            self.meshes = Mesh(registrationMatrix=reg_matrix,
+                               fileNames=file_names
+                               )
+
+        # load mapping procedures
+        proc_item = root.find('Procedures')
+        num_procedures = proc_item.get('count')
+        sep = chr(int(proc_item.get('sep')))
+        self.mapNames = proc_item.get('names').split(sep)
+        self.mapPoints = [int(x) for x in proc_item.get('points').split(sep)]
+
+        for proc in proc_item.iter('Procedure'):
+            name = proc.get('name')
+
+            new_map = CartoMap(name, self.studyXML, parent=self)
+            new_map.surfaceFile = proc.get('meshFile')
+            new_map.volume = float(proc.get('volume'))
+
+            # load mesh
+            new_map.surface = xml_load_binary_surface(proc.find('Mesh'))
+
+            # load BSECGs
+            new_map.bsecg = xml_load_binary_bsecg(proc.find('BSECGS'))
+
+            # load lesions
+            new_map.lesions = xml_load_binary_lesion(proc.find('Lesions'))
+
+            # load EGM points
+            p_data = {}
+            points_item = proc.find('Points')
+            num_points = int(points_item.get('count'))
+
+            for arr in points_item.findall('DataArray'):
+                d_name, data = xml_load_binary_data(arr)
+                p_data[d_name] = data
+            for arr in points_item.findall('Traces'):
+                d_name, data = xml_load_binary_trace(arr)
+                p_data[d_name] = data
+
+            points = []
+            for i in range(num_points):
+                new_point = CartoPoint('dummy', parent=new_map)
+                for key, value in p_data.items():
+                    if hasattr(new_point, key):
+                        setattr(new_point, key, value[i])
+                    else:
+                        log.warning('cannot set attribute "{}" for CartoPoint'
+                                    .format(key))
+                points.append(new_point)
+            new_map.points = points
+
+            # now we can add the procedure to the study
+            self.maps[name] = new_map
 
         # try to set root if explicitly given
-        if root:
-            if obj.set_root(os.path.abspath(root)):
-                log.info('setting study root to {}'.format(root))
-                return obj
+        if repo_path:
+            if self.set_repository(os.path.abspath(repo_path)):
+                log.info('setting study root to {}'.format(repo_path))
+                return
             else:
                 log.info('cannot set study root to {}\n'
-                         'Trying to use root information from PKL'
-                         .format(root))
+                         'Trying to use root information from file'
+                         .format(repo_path))
 
         # try to re-set previous study root
-        if obj.set_root(obj.repository.base):
+        base_path = root.find('Repository').get('root')
+        if self.set_repository(base_path):
             log.info('previous study root is still valid ({})'
-                     .format(obj.repository.root))
-            return obj
+                     .format(self.repository.root))
+            return
 
         # no valid root found so far, set to pkl directory
-        log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.repository.update_root(os.path.dirname(os.path.abspath(filename)))
-        return obj
+        log.warning(
+            'no valid study root found. Using file location!'.upper())
+        self.repository.base = os.path.abspath(file)
+        self.repository.root = os.path.dirname(os.path.abspath(file))
+
+    def save(self, filepath=''):
+        """
+        Save study object as .pyceps archive.
+        Note: File is only created if at least one map was imported!
+
+        By default, the filename is the study's name, but can also be
+        specified by the user.
+        If the file already exists, user interaction is required to either
+        overwrite file or specify a new file name.
+
+        Parameters:
+            filepath : string (optional)
+                custom path for the output file
+
+        Raises:
+            ValueError : If user input is not recognised
+
+        Returns:
+            str : file path .pyceps was saved to
+        """
+
+        # add basic information to XML
+        root, filepath = super().save(filepath)
+
+        if not root:
+            # no base info was created (no maps imported), nothing to add
+            return filepath
+
+        # add Carto specific data
+        root.set('studyXML', self.studyXML)
+        ET.SubElement(root, 'Units',
+                      distance=self.units.Distance,
+                      angle=self.units.Angle
+                      )
+
+        for key, cmap in self.maps.items():
+            map_item = [p for p in root.iter('Procedure')
+                        if p.get('name') == key][0]
+
+            # add additional procedure info
+            map_item.set('meshFile', cmap.surfaceFile)
+            map_item.set('volume', str(cmap.volume))
+
+            # add additional point info
+            point_item = map_item.find('Points')
+            to_add = ['pointFile', 'ecgFile', 'forceFile', 'uniX']
+            for name in to_add:
+                data = [getattr(p, name) for p in cmap.points]
+                xml_add_binary_numpy(point_item, name, np.array(data))
+
+        # make XML pretty
+        dom = minidom.parseString(ET.tostring(root))
+        xml_string = dom.toprettyxml(encoding='utf-8')
+
+        # write XML
+        with open(filepath, 'wb') as fid:
+            fid.write(xml_string)
+
+        log.info('saved study to {}'.format(filepath))
+        return filepath
 
     def export_additional_meshes(self, filename=''):
         """
@@ -828,11 +965,11 @@ class CartoStudy(EPStudy):
             if not tmp_root.root:
                 # dummy repo was not initialized properly, so root is invalid
                 return False
-            return self._locate_study_xml(tmp_root, pwd=pwd) is not None
+            return self.locate_study_xml(tmp_root, pwd=pwd) is not None
 
         return False
 
-    def set_root(self, root_dir):
+    def set_repository(self, root_dir):
         """
         Change path to root directory. Overrides BaseClass method.
         If new root directory is invalid, it is not changed.
@@ -855,14 +992,12 @@ class CartoStudy(EPStudy):
 
         # study XML was found, check if it is the same study
         root = Repository(root_dir)
-        study_info = self._locate_study_xml(root,
-                                            pwd=self.pwd,
-                                            encoding=self.encoding)
+        study_info = self.locate_study_xml(root, pwd=self.pwd,
+                                           encoding=self.encoding)
         if not study_info:
             # should never happen...
             raise FileNotFoundError
 
-        log.info('found study XML at {}'.format(self.repository.root))
         if not self.studyXML == study_info['xml']:
             log.warning('name of study XML differs, will not change root!')
             return False
@@ -872,14 +1007,15 @@ class CartoStudy(EPStudy):
 
         # change study root
         self.repository = root
+        log.info('found study XML at {}'.format(self.repository.root))
 
         return True
 
     @staticmethod
-    def _locate_study_xml(repository,
-                          pwd='',
-                          regex=r'^((?!Export).)*.xml$',
-                          encoding='cp1252'):
+    def locate_study_xml(repository,
+                         pwd='',
+                         regex=r'^((?!Export).)*.xml$',
+                         encoding='cp1252'):
         """
         Locate study XML in Carto repository. A file is considered valid if
         it starts with '<Study name='.
@@ -927,7 +1063,7 @@ class CartoStudy(EPStudy):
         for folder in folders:
             # update root location and start new search there
             repository.update_root(repository.join(folder))
-            return CartoStudy._locate_study_xml(repository)
+            return CartoStudy.locate_study_xml(repository)
 
         # XML was nowhere to be found
         return None
@@ -962,7 +1098,7 @@ class CartoMap(EPMap):
             triangulated anatomical shell
         points : list of subclass EPPoints
             the mapping points recorded during mapping procedure
-        ecg : list of BodySurfaceECG
+        bsecg : list of BodySurfaceECG
             body surface ECG data for the mapping procedure
         lesions : list of Lesion
             ablation data for this mapping procedure
@@ -988,13 +1124,9 @@ class CartoMap(EPMap):
 
     """
 
-    def __init__(self, name, study_xml, parent=None, egm_names_from_pos=False):
+    def __init__(self, name, study_xml, parent=None):
         """
         Constructor.
-        Load all relevant information for this mapping procedure, import EGM
-        recording points, interpolate standard surface parameter maps from
-        point data (bip voltage, uni voltage, LAT), and build representative
-        body surface ECGs.
 
         Parameters:
             name : str
@@ -1003,12 +1135,6 @@ class CartoMap(EPMap):
                 name of the study's XML file (same as in parent)
             parent : CartoStudy (optional)
                 study this map belongs to
-            egm_names_from_pos : boolean (optional)
-                get names of egm traces from electrode positions
-
-        Raises:
-            MapAttributeError : If unable to retrieve map attributes from XML
-            MeshFileNotFoundError: If mesh file is not found in repository
 
         Returns:
             None
@@ -1027,6 +1153,26 @@ class CartoMap(EPMap):
         self.coloringRangeTable = []
         self.rf = None
 
+    def import_map(self, egm_names_from_pos=False):
+        """
+        Load all relevant information for this mapping procedure, import EGM
+        recording points, interpolate standard surface parameter maps from
+        point data (bip voltage, uni voltage, LAT), and build representative
+        body surface ECGs.
+
+        Parameters:
+            egm_names_from_pos : boolean (optional)
+                get names of egm traces from electrode positions
+
+        Raises:
+            MapAttributeError : If unable to retrieve map attributes from XML
+            MeshFileNotFoundError: If mesh file is not found in repository
+
+        Returns:
+            None
+
+        """
+
         self._import_attributes()
         self.surface = self.load_mesh()
         self.points = self.load_points(
@@ -1036,7 +1182,7 @@ class CartoMap(EPMap):
         self.interpolate_data('lat')
         self.interpolate_data('bip')
         self.interpolate_data('uni')
-        self.ecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
+        self.bsecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
 
     def load_mesh(self):
         """
@@ -1090,7 +1236,7 @@ class CartoMap(EPMap):
 
         xml_file = self.parent.repository.join(self.studyXML)
         with self.parent.repository.open(xml_file, mode='rb') as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
                     if x.get('Name') == self.name]
@@ -1113,7 +1259,7 @@ class CartoMap(EPMap):
             return -1
 
         with self.parent.repository.open(all_points_file, mode='rb') as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         if not root.get('Map_Name') == self.name:
             log.warning('map name {} in export file {} does not match map '
@@ -1174,11 +1320,12 @@ class CartoMap(EPMap):
             log.debug('adding point {} to map {}'.format(point_name,
                                                          self.name))
             new_point = CartoPoint(point_name,
-                                   point_file,
                                    coordinates=xyz,
                                    tags=tag_names,
-                                   parent=self,
-                                   egm_names_from_pos=egm_names_from_pos)
+                                   parent=self)
+            new_point.import_point(point_file,
+                                   egm_names_from_pos=egm_names_from_pos
+                                   )
             points.append(new_point)
 
         return points
@@ -1283,7 +1430,7 @@ class CartoMap(EPMap):
                 # make this the new ref
                 ref = point.refAnnotation
 
-        # build representative ecg trace
+        # build representative bsecg trace
         if isinstance(method, str):
             method = [method]
         repr_ecg = []
@@ -1681,7 +1828,7 @@ class CartoMap(EPMap):
 
         xml_file = self.parent.repository.join(self.studyXML)
         with self.parent.repository.open(xml_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         map_item = [x for x in root.find('Maps').findall('Map')
                     if x.get('Name') == self.name]
@@ -1790,8 +1937,8 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, 2)
-            cartesian coordinates of the unipolar recording electrodes
+        uniX : ndarray (3, 1)
+            cartesian coordinates of the second unipolar recording electrode
             NOTE: coordinates of second unipolar electrode are NaN if
             unipolar channel names were read from ECG file only
         forceFile : str
@@ -1810,10 +1957,9 @@ class CartoPoint(EPPoint):
 
     """
 
-    def __init__(self, name, point_file,
+    def __init__(self, name,
                  coordinates=np.full((3, 1), np.nan, dtype=float),
                  tags=None,
-                 egm_names_from_pos=False,
                  parent=None):
         """
         Constructor.
@@ -1821,20 +1967,42 @@ class CartoPoint(EPPoint):
         Parameters:
              name : str
                 name / identifier for this point
-            point_file : str
-                name of this points XML file
-                <map_name>_<point_name>_Point_Export.xml
             coordinates : ndarray(3, 1)
                 cartesian coordinates of recording position
             tags: list of str (optional)
                 tags assigned to this point, i.e. 'Full_name' in study's
                 TagsTable
-            egm_names_from_pos : bool (optional)
-                get names of EGM traces from electrode positions
-                NOTE: second unipolar channel name and coordinates are only
-                valid if this is True
             parent : CartoMap
                 the map this point belongs to
+
+        Returns:
+            None
+
+        """
+
+        super().__init__(name, coordinates=coordinates, parent=parent)
+
+        # add Carto3 specific attributes
+        self.pointFile = ''
+        self.barDirection = None
+        self.tags = tags
+        self.ecgFile = None
+        self.uniX = np.full((3, 1), np.nan, dtype=np.float32)
+        self.forceFile = None
+        self.forceData = None
+
+    def import_point(self, point_file, egm_names_from_pos=False):
+        """
+        Load data associated with this point.
+
+        Parameters:
+            point_file : str
+                name of this points XML file
+                <map_name>_<point_name>_Point_Export.xml
+            egm_names_from_pos : boolean
+                If True, EGM electrode names are extracted from positions file.
+                This also returns name and coordinates of the second unipolar
+                channel.
 
         Raises:
             FileNotFoundError : if point's XML is not found
@@ -1844,47 +2012,19 @@ class CartoPoint(EPPoint):
 
         """
 
-        super().__init__(name, coordinates=coordinates, parent=parent)
+        log.debug('Loading point data for point {}'.format(self.name))
 
         file_loc = self.parent.parent.repository.join(point_file)
         if not self.parent.parent.repository.is_file(file_loc):
             log.info('Points export file {} does not exist'
                      .format(point_file))
             raise FileNotFoundError
-
-        # add Carto3 specific attributes
         self.pointFile = point_file
-        self.barDirection = None
-        self.woi = np.array([])
-        self.tags = tags
-        self.ecgFile = None
-        self.uniX = np.full((3, 2), np.nan, dtype=float)
-        self.forceFile = None
-        self.forceData = None
-
-        self.load(egm_names_from_pos=egm_names_from_pos)
-
-    def load(self, egm_names_from_pos=False):
-        """
-        Load data associated with this point.
-
-        Parameters:
-            egm_names_from_pos : boolean
-                If True, EGM electrode names are extracted from positions file.
-                This also returns name and coordinates of the second unipolar
-                channel.
-
-        Returns:
-            None
-
-        """
-
-        log.debug('Loading point data for point {}'.format(self.name))
 
         # read annotation data
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         annotation_item = root.find('Annotations')
         self.refAnnotation = int(annotation_item.get('Reference_Annotation'))
@@ -1968,7 +2108,7 @@ class CartoPoint(EPPoint):
                 log.warning('found no or multiple surface vertices closest to '
                             'to point {}: {}'
                             .format(self.name, closest))
-            self.prjX = np.array(closest[0], dtype=float)
+            self.prjX = np.array(closest[0], dtype=np.float32)
             self.prjDistance = distance[0]
             self.barDirection = direct[0]
 
@@ -2075,7 +2215,7 @@ class CartoPoint(EPPoint):
             # array has shape (2500,) but (2500,1) is needed
             ecg_data = np.expand_dims(ecg_data, axis=1)
 
-        return ecg_data
+        return ecg_data.astype(np.float32)
 
     def _channel_names_from_ecg_header(self, ecg_header):
         """
@@ -2158,7 +2298,7 @@ class CartoPoint(EPPoint):
         # read points XML file
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         # get position files
         position_files = []
@@ -2176,7 +2316,7 @@ class CartoPoint(EPPoint):
                 continue
 
             with self.parent.parent.repository.open(pos_file) as fid:
-                idx, time, xyz = read_electrode_pos_file(fid)
+                idx, time, xyz = read_electrode_pos_file(fid, encoding=encoding)
 
             # find electrode with the closest distance
             dist = sp_distance.cdist(xyz, np.array([self.recX])).flatten()
@@ -2193,7 +2333,7 @@ class CartoPoint(EPPoint):
                 continue
 
             try:
-                xyz_2 = xyz[idx_closest + 1, :]
+                xyz_2 = np.expand_dims(xyz[idx_closest + 1, :], axis=1)
             except IndexError:
                 log.debug('unable to get position of 2nd uni channel for '
                           'point {}'.format(self.name))
@@ -2228,7 +2368,7 @@ class CartoPoint(EPPoint):
         # read points XML file
         point_file = self.parent.parent.repository.join(self.pointFile)
         with self.parent.parent.repository.open(point_file) as fid:
-            root = xml.parse(fid).getroot()
+            root = ET.parse(fid).getroot()
 
         # get position files
         position_files = []

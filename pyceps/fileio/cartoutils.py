@@ -103,8 +103,8 @@ def read_mesh_file(fid, invisible_groups=False, encoding='cp1252'):
                 raise ValueError('unexpected vertices section in Carto3 '
                                  'mesh file')
 
-            verts = np.full((n_verts, 3), np.nan, dtype=float)
-            verts_normals = np.full((n_verts, 3), np.nan, dtype=float)
+            verts = np.full((n_verts, 3), np.nan, dtype=np.single)
+            verts_normals = np.full((n_verts, 3), np.nan, dtype=np.single)
             verts_group_id = np.full((n_verts, 1),
                                      np.iinfo(int).min,
                                      dtype=int)
@@ -112,8 +112,8 @@ def read_mesh_file(fid, invisible_groups=False, encoding='cp1252'):
             for i in range(n_verts):
                 line = fid.readline().decode(encoding=encoding)
                 values = line.split('=')[1].split()
-                verts[i, :] = np.array(values[0:3]).astype(float)
-                verts_normals[i, :] = np.array(values[3:6]).astype(float)
+                verts[i, :] = np.array(values[0:3]).astype(np.single)
+                verts_normals[i, :] = np.array(values[3:6]).astype(np.single)
                 verts_group_id[i] = int(values[6])
 
             # next line must be blank
@@ -625,12 +625,12 @@ def read_visitag_file(fid, encoding='cp1252'):
     last_pos = fid.tell()
     if not fid.readline().decode(encoding=encoding):
         # file is empty!
-        return np.array([], dtype=float, ndmin=2), []
+        return np.array([], dtype=np.float32, ndmin=2), []
 
     # reset reading position
     fid.seek(last_pos)
     data = np.loadtxt(fid,
-                      dtype=float,
+                      dtype=np.float32,
                       skiprows=0,
                       ndmin=2,
                       )
