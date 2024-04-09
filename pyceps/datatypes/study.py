@@ -985,23 +985,23 @@ class EPMap:
                     np.asarray([x.egmRef.data for x in points])
                 )
 
-            # save data to igb
-            # Note: this file cannot be loaded with the CARTO mesh but rather
-            #       with the exported mapped nodes
-            for key, data in channel_data.items():
-                if data.size == 0:
-                    log.warning('no data found for channel {}!'.format(channel))
-                header = {'x': data.shape[0],
-                          't': data.shape[1],
-                          'unites_t': 'ms',
-                          'unites': 'mV',
-                          'dim_t': data.shape[0]-1,
-                          'org_t': 0,
-                          'inc_t': 1}
+        # save data to igb
+        # Note: this file cannot be loaded with the CARTO mesh but rather
+        #       with the exported mapped nodes
+        for key, data in channel_data.items():
+            if data.size == 0:
+                log.warning('no data found for channel {}!'.format(key))
+            header = {'x': data.shape[0],
+                      't': data.shape[1],
+                      'unites_t': 'ms',
+                      'unites': 'mV',
+                      'dim_t': data.shape[0]-1,
+                      'org_t': 0,
+                      'inc_t': 1}
 
-                filename = '{}.egm.{}.igb'.format(basename, key)
-                f = writer.dump(filename, header, data)
-                log.info('exported EGM trace {} to {}'.format(channel, f))
+            filename = '{}.egm.{}.igb'.format(basename, key)
+            f = writer.dump(filename, header, data)
+            log.info('exported EGM trace {} to {}'.format(key, f))
 
         return
 
