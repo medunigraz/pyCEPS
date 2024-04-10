@@ -1180,6 +1180,12 @@ class CartoMap(EPMap):
 
         self._import_attributes()
         self.surface = self.load_mesh()
+        # check if parent study was imported or loaded
+        # if it was loaded, some attributes are missing
+        if not self.parent.mappingParams:
+            log.info('study was probably loaded from file, need to re-import '
+                     'basic study information')
+            self.parent.import_study()
         self.points = self.load_points(
             study_tags=self.parent.mappingParams.TagsTable,
             egm_names_from_pos=egm_names_from_pos)
