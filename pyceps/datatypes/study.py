@@ -334,7 +334,7 @@ class EPStudy:
                     filepath, ext = os.path.splitext(filepath)
                     filepath += '_' + suffix + ext
                 elif user_input.lower() in ('n', 'no'):
-                    return
+                    return None, filepath
             else:
                 # ... error handling ...
                 print('Error: Input {} unrecognised.'.format(user_input))
@@ -345,6 +345,7 @@ class EPStudy:
                           name=self.name,
                           system=self.system,
                           version=PYCEPS_VERSION,
+                          created=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                           )
 
         # add repository info
@@ -971,7 +972,13 @@ class EPMap:
                 )
                 # export 2nd unipolar point cloud
                 uni2_points = np.array([point.uniX for point in points])
+                # adjust ndarray dimensions
+                if uni2_points.ndim == 3:
+                    uni2_points = np.squeeze(uni2_points, axis=2)
                 pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
+                log.info('exporting mapping points cloud to {}'
+                         .format(pts_file)
+                         )
                 writer.dump(pts_file, uni2_points)
 
             elif channel.upper() == 'REF':
@@ -979,23 +986,23 @@ class EPMap:
                     np.asarray([x.egmRef.data for x in points])
                 )
 
-            # save data to igb
-            # Note: this file cannot be loaded with the CARTO mesh but rather
-            #       with the exported mapped nodes
-            for key, data in channel_data.items():
-                if data.size == 0:
-                    log.warning('no data found for channel {}!'.format(channel))
-                header = {'x': data.shape[0],
-                          't': data.shape[1],
-                          'unites_t': 'ms',
-                          'unites': 'mV',
-                          'dim_t': data.shape[0]-1,
-                          'org_t': 0,
-                          'inc_t': 1}
+        # save data to igb
+        # Note: this file cannot be loaded with the CARTO mesh but rather
+        #       with the exported mapped nodes
+        for key, data in channel_data.items():
+            if data.size == 0:
+                log.warning('no data found for channel {}!'.format(key))
+            header = {'x': data.shape[0],
+                      't': data.shape[1],
+                      'unites_t': 'ms',
+                      'unites': 'mV',
+                      'dim_t': data.shape[0]-1,
+                      'org_t': 0,
+                      'inc_t': 1}
 
-                filename = '{}.egm.{}.igb'.format(basename, key)
-                f = writer.dump(filename, header, data)
-                log.info('exported EGM trace {} to {}'.format(channel, f))
+            filename = '{}.egm.{}.igb'.format(basename, key)
+            f = writer.dump(filename, header, data)
+            log.info('exported EGM trace {} to {}'.format(key, f))
 
         return
 
@@ -1143,9 +1150,9 @@ class EPPoint:
             identifier for this recording point
         parent : subclass of EPMap
             parent mapping procedure this point belongs to
-        recX : ndarray (3, 1)
+        recX : ndarray (3, )
             coordinates at which this point was recorded
-        prjX : ndarray (3, 1)
+        prjX : ndarray (3, )
             coordinates of the closest anatomical shell vertex
         prjDistance : float
             distance between recording location and closest shell vertex
@@ -1175,14 +1182,14 @@ class EPPoint:
     """
 
     def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=np.float32),
+                 coordinates=np.full(3, np.nan, dtype=np.float32),
                  parent=None):
         """
         Constructor.
 
         Parameters:
             name : string
-            coordinates : ndarray (3, 1)
+            coordinates : ndarray (3, )
                 the coordinates where this point was recorded
             parent : EPMap
 
