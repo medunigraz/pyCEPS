@@ -839,6 +839,11 @@ class CartoStudy(EPStudy):
             None
         """
 
+        if not self.is_root_valid():
+            log.warning('a valid study root is necessary to dump additional '
+                        'meshes!')
+            return
+
         if not self.meshes:
             log.info('no additional meshes found in study, nothing to export')
             return
