@@ -173,7 +173,7 @@ class VisitagAblationSite:
                  session_index=None,
                  channel_id=None,
                  tag_index_status=None,
-                 coordinates=np.full(3, np.nan, dtype=float),
+                 coordinates=np.full(3, np.nan, dtype=np.float32),
                  avg_force=np.nan,
                  fti=np.nan,
                  max_power=np.nan,
