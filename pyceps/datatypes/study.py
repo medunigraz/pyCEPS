@@ -334,7 +334,7 @@ class EPStudy:
                     filepath, ext = os.path.splitext(filepath)
                     filepath += '_' + suffix + ext
                 elif user_input.lower() in ('n', 'no'):
-                    return
+                    return None, filepath
             else:
                 # ... error handling ...
                 print('Error: Input {} unrecognised.'.format(user_input))
