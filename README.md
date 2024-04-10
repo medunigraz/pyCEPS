@@ -110,7 +110,7 @@ This is used only when importing data from an EAM data repository.
 ### Specifying the data location
 ```shell
 --study-repository "path_to_repository"
---study-file "path_to_pkl"
+--study-file "path_to_file"
 ```
 Using these commands will gather basic information from the data set,
 (i.e. name of the study, performed mapping procedures, etc.) and display this
