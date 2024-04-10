@@ -1149,9 +1149,9 @@ class EPPoint:
             identifier for this recording point
         parent : subclass of EPMap
             parent mapping procedure this point belongs to
-        recX : ndarray (3, 1)
+        recX : ndarray (3, )
             coordinates at which this point was recorded
-        prjX : ndarray (3, 1)
+        prjX : ndarray (3, )
             coordinates of the closest anatomical shell vertex
         prjDistance : float
             distance between recording location and closest shell vertex
@@ -1181,14 +1181,14 @@ class EPPoint:
     """
 
     def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=np.float32),
+                 coordinates=np.full(3, np.nan, dtype=np.float32),
                  parent=None):
         """
         Constructor.
 
         Parameters:
             name : string
-            coordinates : ndarray (3, 1)
+            coordinates : ndarray (3, )
                 the coordinates where this point was recorded
             parent : EPMap
 

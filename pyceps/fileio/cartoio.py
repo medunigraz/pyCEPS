@@ -1911,9 +1911,9 @@ class CartoPoint(EPPoint):
             name of the points XML file <map_name>_<point_ID>_Point_Export.xml
         parent : CartoMap
             parent mapping procedure this point belongs to
-        recX : ndarray (3, 1)
+        recX : ndarray (3, )
             coordinates at which this point was recorded
-        prjX : ndarray (3, 1)
+        prjX : ndarray (3, )
             coordinates of the closest anatomical shell vertex
         prjDistance : float
             distance between recording location and closest shell vertex
@@ -1942,10 +1942,10 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, 1)
+        uniX : ndarray (3, )
             cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are NaN if
-            unipolar channel names were read from ECG file only
+            NOTE: coordinates of second unipolar electrode are same as recX if
+            position cannot be determined
         forceFile : str
             name of the points contact force file
             <map_name>_<point_name>_Contact_Force.txt
@@ -1963,7 +1963,7 @@ class CartoPoint(EPPoint):
     """
 
     def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=float),
+                 coordinates=np.full(3, np.nan, dtype=np.float32),
                  tags=None,
                  parent=None):
         """
@@ -1972,7 +1972,7 @@ class CartoPoint(EPPoint):
         Parameters:
              name : str
                 name / identifier for this point
-            coordinates : ndarray(3, 1)
+            coordinates : ndarray(3, )
                 cartesian coordinates of recording position
             tags: list of str (optional)
                 tags assigned to this point, i.e. 'Full_name' in study's
@@ -1992,7 +1992,7 @@ class CartoPoint(EPPoint):
         self.barDirection = None
         self.tags = tags
         self.ecgFile = None
-        self.uniX = np.full((3, 1), np.nan, dtype=np.float32)
+        self.uniX = np.full(3, np.nan, dtype=np.float32)
         self.forceFile = None
         self.forceData = None
 
@@ -2284,19 +2284,22 @@ class CartoPoint(EPPoint):
         coordinates of the subsequent channel. This should be the correct
         second unipolar channel for bipolar recordings.
 
-        Note: Method _channel_names_from_pos_file is more elaborate but
+        NOTE: If coordinates cannot be determined, the recording position of
+        the first unipolar channel is used!
+
+        NOTE: Method _channel_names_from_pos_file is more elaborate but
         fails often for missing channel positions in position files!
 
         Parameters:
             encoding:
 
         Returns:
-            ndarray(3, 1)
+            ndarray(3, )
                 coordinates of the second unipolar channel
 
         """
 
-        xyz_2 = np.full((3, 1), np.nan, dtype=np.float32)
+        xyz_2 = np.full(3, np.nan, dtype=np.float32)
 
         log.debug('get position of 2nd unipolar channel')
 
@@ -2324,7 +2327,7 @@ class CartoPoint(EPPoint):
                 idx, time, xyz = read_electrode_pos_file(fid, encoding=encoding)
 
             # find electrode with the closest distance
-            dist = sp_distance.cdist(xyz, np.array([self.recX])).flatten()
+            dist = sp_distance.cdist(xyz, np.expand_dims(self.recX, axis=1).T).flatten()
             idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
             if idx_closest.size != 1:
                 log.debug(
@@ -2338,15 +2341,16 @@ class CartoPoint(EPPoint):
                 continue
 
             try:
-                xyz_2 = np.expand_dims(xyz[idx_closest + 1, :], axis=1)
+                xyz_2 = xyz[idx_closest + 1, :]
             except IndexError:
                 log.debug('unable to get position of 2nd uni channel for '
                           'point {}'.format(self.name))
 
         if np.isnan(xyz_2).all():
             log.warning('coordinates for 2nd unipolar channel not found for '
-                        'point {}'
+                        'point {}, using recording position'
                         .format(self.name))
+            xyz_2 = self.recX
 
         return xyz_2
 
@@ -2438,7 +2442,7 @@ class CartoPoint(EPPoint):
                 name of the bipolar channel
             egm_name_uni : list of string
                 names of the unipolar channels
-            xyz_2 : ndarray (3, 1)
+            xyz_2 : ndarray (3, )
                 coordinates of the second unipolar channel
         """
 
@@ -2447,7 +2451,7 @@ class CartoPoint(EPPoint):
 
         egm_name_bip = ''
         egm_name_uni = ['', '']
-        xyz_2 = np.full((3, 1), np.nan, dtype=np.float32)
+        xyz_2 = np.full(3, np.nan, dtype=np.float32)
 
         channel_number = np.nan
 
@@ -2538,7 +2542,7 @@ class CartoPoint(EPPoint):
                         .format(self.name, point_xyz))
             return ('',
                     ['', ''],
-                    np.full((3, ), np.nan, dtype=np.float32)
+                    np.full(3, np.nan, dtype=np.float32)
                     )
 
         return egm_name_bip, egm_name_uni, xyz_2
