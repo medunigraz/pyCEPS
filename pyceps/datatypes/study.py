@@ -345,6 +345,7 @@ class EPStudy:
                           name=self.name,
                           system=self.system,
                           version=PYCEPS_VERSION,
+                          created=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                           )
 
         # add repository info
