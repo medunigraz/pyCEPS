@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.1] - 2024-04-16
+
+### Added
+
+- interpolation of IMP and FRC surface parameter maps (Robert Arnold)
+
+### Changed
+
+- export point impedance and contact force data only if data is available (Robert Arnold)
+- test data set (added point force and impedance data) (Robert Arnold)
+
+### Fixed
+
+- load .pyceps with no additional meshes (Robert Arnold)
+- load .pyceps with maps without points (Robert Arnold)
+- import of point impedance and contact force data (Robert Arnold)
+
 ## [1.0.0] - 2024-04-10
 
 ### Added
@@ -79,6 +96,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.0.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.1
 [1.0.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.0
 [0.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/0.1.1
 [0.1.0]: https://github.com/medunigraz/pyCEPS/releases/tag/0.1.0
