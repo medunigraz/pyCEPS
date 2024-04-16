@@ -386,6 +386,7 @@ class EPStudy:
             points = ET.SubElement(proc, 'Points',
                                    count=str(len(cmap.points))
                                    )
+            # export data from EPPoint baseclass only
             for key in list(EPPoint('dummy', parent=cmap).__dict__):
                 if key == 'parent':
                     # don't save this
