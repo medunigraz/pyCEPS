@@ -706,24 +706,25 @@ class CartoStudy(EPStudy):
             points_item = proc.find('Points')
             num_points = int(points_item.get('count'))
 
-            for arr in points_item.findall('DataArray'):
-                d_name, data = xml_load_binary_data(arr)
-                p_data[d_name] = data
-            for arr in points_item.findall('Traces'):
-                d_name, data = xml_load_binary_trace(arr)
-                p_data[d_name] = data
+            if num_points > 0:
+                for arr in points_item.findall('DataArray'):
+                    d_name, data = xml_load_binary_data(arr)
+                    p_data[d_name] = data
+                for arr in points_item.findall('Traces'):
+                    d_name, data = xml_load_binary_trace(arr)
+                    p_data[d_name] = data
 
-            points = []
-            for i in range(num_points):
-                new_point = CartoPoint('dummy', parent=new_map)
-                for key, value in p_data.items():
-                    if hasattr(new_point, key):
-                        setattr(new_point, key, value[i])
-                    else:
-                        log.warning('cannot set attribute "{}" for CartoPoint'
-                                    .format(key))
-                points.append(new_point)
-            new_map.points = points
+                points = []
+                for i in range(num_points):
+                    new_point = CartoPoint('dummy', parent=new_map)
+                    for key, value in p_data.items():
+                        if hasattr(new_point, key):
+                            setattr(new_point, key, value[i])
+                        else:
+                            log.warning('cannot set attribute "{}" for CartoPoint'
+                                        .format(key))
+                    points.append(new_point)
+                new_map.points = points
 
             # now we can add the procedure to the study
             self.maps[name] = new_map
