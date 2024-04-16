@@ -665,7 +665,7 @@ class CartoStudy(EPStudy):
 
         # load additional meshes
         mesh_item = root.find('AdditionalMeshes')
-        if int(mesh_item.get('count')) > 0:
+        if mesh_item:
             _, reg_matrix = xml_load_binary_data(
                 [x for x in mesh_item.findall('DataArray')
                  if x.get('name') == 'registrationMatrix'][0]
