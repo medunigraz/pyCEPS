@@ -526,7 +526,6 @@ def read_force_file(fid, encoding='cp1252'):
                   't_lateralAngle': np.empty(0),
                   'systemTime': np.empty(0)}
 
-
     # read file version
     version = fid.readline().decode(encoding=encoding).rstrip()
     if not version.lower().endswith('contactforce.txt_2.0'):

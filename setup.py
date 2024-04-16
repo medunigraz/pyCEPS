@@ -39,6 +39,10 @@ EMAIL = 'robert.arnold@medunigraz.at'
 AUTHOR = 'Robert Arnold'
 REQUIRES_PYTHON = '>=3.8'
 VERSION = '{{VERSION_PLACEHOLDER}}'
+PROJECT_URLS = {
+    'Github': 'https://github.com/medunigraz/pyCEPS',
+    'Changelog': 'https://github.com/medunigraz/pyCEPS/blob/main/CHANGELOG.md',
+}
 CLASSIFIERS = [
     # Trove classifiers
     # Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers
