@@ -1956,8 +1956,10 @@ class CartoPoint(EPPoint):
         forceFile : str
             name of the points contact force file
             <map_name>_<point_name>_Contact_Force.txt
-        force : PointForce
-            contact force data for this point
+        forceData : PointForce
+            full contact force data for this point
+        impedanceData : PointImpedance
+            full impedance data for this point
 
     Methods:
         is_valid()
@@ -1998,10 +2000,11 @@ class CartoPoint(EPPoint):
         self.pointFile = ''
         self.barDirection = None
         self.tags = tags
-        self.ecgFile = None
+        self.ecgFile = ''
         self.uniX = np.full(3, np.nan, dtype=np.float32)
-        self.forceFile = None
+        self.forceFile = ''
         self.forceData = None
+        self.impedanceData = None
 
     def import_point(self, point_file, egm_names_from_pos=False):
         """
@@ -2059,8 +2062,12 @@ class CartoPoint(EPPoint):
                 impedance_time[i] = x.get('Time')
                 impedance_value[i] = x.get('Value')
 
-            self.impedance = PointImpedance(time=impedance_time,
-                                            value=impedance_value)
+            self.impedanceData = PointImpedance(time=impedance_time,
+                                                value=impedance_value)
+            # update base class impedance value with the one closest to LAT
+            self.impedance = impedance_value[
+                np.nanargmin(np.abs(impedance_time - self.latAnnotation))
+            ]
 
         self.ecgFile = root.find('ECG').get('FileName')
 
@@ -2126,19 +2133,20 @@ class CartoPoint(EPPoint):
 
         # now get the force data for this point
         log.debug('reading force file for point {}'.format(self.name))
-        self.forceFile = (self.pointFile.split('_Point_Export')[0]
-                          + '_ContactForce.txt'
-                          )
-
-        if self.parent.parent.repository.is_file(self.forceFile):
-            with self.parent.parent.repository.open(self.forceFile) as fid:
-                self.forceData = read_force_file(
-                    fid, encoding=self.parent.parent.encoding
-                )
-            # update base class force value
-            self.force = self.forceData.force
-        else:
-            log.debug('No force file found for point {}'.format(self.name))
+        try:
+            self.forceFile = root.find('ContactForce').get('FileName')
+            force_file = self.parent.parent.repository.join(self.forceFile)
+            if self.parent.parent.repository.is_file(force_file):
+                with self.parent.parent.repository.open(force_file) as fid:
+                    self.forceData = read_force_file(
+                        fid, encoding=self.parent.parent.encoding
+                    )
+                # update base class force value with the one closest to LAT
+                self.force = self.forceData.force
+            else:
+                log.debug('No force file found for point {}'.format(self.name))
+        except AttributeError:
+            log.debug('No force data saved for point {}'.format(self.name))
 
     def is_valid(self):
         """
