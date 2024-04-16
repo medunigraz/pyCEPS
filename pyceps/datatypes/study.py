@@ -573,7 +573,8 @@ class EPMap:
 
         Parameters:
             which : str
-                parameter to interpolate, options: ['uni', 'bip', 'act']
+                parameter to interpolate
+                options: ['uni', 'bip', 'lat', 'imp', 'frc']
 
         Raises:
             KeyError : If parameter to interpolate is unknown
@@ -609,6 +610,10 @@ class EPMap:
             data = np.asarray([p.bipVoltage for p in valid_points])
         elif which.lower() == 'uni':
             data = np.asarray([p.uniVoltage for p in valid_points])
+        elif which.lower() == 'imp':
+            data = np.asarray([p.impedance for p in valid_points])
+        elif which.lower() == 'frc':
+            data = np.asarray([p.force for p in valid_points])
         else:
             raise KeyError()
 

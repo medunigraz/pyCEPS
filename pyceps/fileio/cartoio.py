@@ -1194,6 +1194,8 @@ class CartoMap(EPMap):
         self.interpolate_data('lat')
         self.interpolate_data('bip')
         self.interpolate_data('uni')
+        self.interpolate_data('imp')
+        self.interpolate_data('frc')
         self.bsecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
 
     def load_mesh(self):
