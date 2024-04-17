@@ -2103,24 +2103,18 @@ class CartoPoint(EPPoint):
             self.uniX = uniCoordinates
 
         # now we can import the electrograms for this point
-        egm_data = self.import_ecg([egm_names['bip'],
-                                    egm_names['uni1'],
-                                    egm_names['uni2'],
-                                    egm_names['ref']])
+        egm_data = self.load_ecg([egm_names['bip'],
+                                  egm_names['uni1'],
+                                  egm_names['uni2'],
+                                  egm_names['ref']])
         # build egm traces
-        self.egmBip = Trace(name=egm_names['bip'],
-                            data=egm_data[:, 0].astype(np.float32),
-                            fs=1000.0)
-        self.egmUni = [Trace(name=egm_names['uni1'],
-                             data=egm_data[:, 1].astype(np.float32),
-                             fs=1000.0),
-                       Trace(name=egm_names['uni2'],
-                             data=egm_data[:, 2].astype(np.float32),
-                             fs=1000.0)
-                       ]
-        self.egmRef = Trace(name=egm_names['ref'],
-                            data=egm_data[:, 3].astype(np.float32),
-                            fs=1000.0)
+        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
+        egmUni = [
+            [t for t in egm_data if t.name == egm_names['uni1']][0],
+            [t for t in egm_data if t.name == egm_names['uni2']][0]
+        ]
+        self.egmUni = egmUni
+        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
