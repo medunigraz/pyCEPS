@@ -2180,7 +2180,7 @@ class CartoPoint(EPPoint):
 
         return woi[0] < self.latAnnotation < woi[1]
 
-    def import_ecg(self, channel_names=None):
+    def load_ecg(self, channel_names=None, *args, **kwargs):
         """
         Load ECG data for this point.
 
@@ -2194,7 +2194,7 @@ class CartoPoint(EPPoint):
             KeyError : If a channel name is not found in ECG file
 
         Returns:
-             ndarray (2500, 1)
+             list of Trace
         """
 
         if not self.ecgFile:
@@ -2239,7 +2239,16 @@ class CartoPoint(EPPoint):
             # array has shape (2500,) but (2500,1) is needed
             ecg_data = np.expand_dims(ecg_data, axis=1)
 
-        return ecg_data.astype(np.float32)
+        # build Traces
+        traces = []
+        for i, name in enumerate(channel_names):
+            traces.append(
+                Trace(name=name,
+                      data=ecg_data[:, i].astype(np.float32),
+                      fs=1000.0)
+            )
+
+        return traces
 
     def _channel_names_from_ecg_header(self, ecg_header):
         """

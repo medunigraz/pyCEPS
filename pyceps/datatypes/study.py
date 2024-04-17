@@ -1259,3 +1259,7 @@ class EPPoint:
     def is_valid(self):
         """Check if this point is valid."""
         raise NotImplementedError
+
+    def load_ecg(self, channel_names=None, *args, **kwargs):
+        """Import ECG data for this point."""
+        raise NotImplementedError
