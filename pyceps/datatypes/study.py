@@ -1032,10 +1032,83 @@ class EPMap:
         """
         Export surface ECG traces in IGB format.
 
-        ECG data for points differs on EP systems, needs to be implemented
-        in specific data type.
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        By default, ECGs for all valid points are exported, but also a
+        list of EPPoints to use can be given.
+
+        If no ECG names are specified, 12-lead ECGs are exported
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ecg.<trace>.pc.igb
+
+        Parameters:
+            basename : string (optional)
+                path and filename of the exported files
+            which : string or list of strings
+                ECG name(s) to include in IGB file.
+            points : list of CartoPoints (optional)
+                EGM points to export
+
+        Returns:
+            None
         """
-        raise NotImplementedError
+
+        log.info('exporting point ECG data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        if not basename:
+            basename = self.parent.build_export_basename(self.name)
+            basename = os.path.join(basename, self.name)
+
+        if not which:
+            which = ['I', 'II', 'III',
+                     'aVR', 'aVL', 'aVF',
+                     'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        if isinstance(which, str):
+            which = [which]
+
+        # export point files
+        self.export_point_cloud(points=points, basename=basename)
+
+        # prepare data
+        data = np.full((len(points), 2500, len(which)),
+                       np.nan,
+                       dtype=np.float32)
+
+        # append point ECG data
+        for i, point in enumerate(points):
+            point_data = np.array(
+                [t.data for t in point.ecg for chn in which if t.name == chn]
+            )
+            data[i, :, :] = point_data.T
+
+        # save data channel-wise
+        writer = FileWriter()
+        for i, channel in enumerate(which):
+            channel_data = data[:, :, i]
+            # save data to igb
+            # Note: this file cannot be loaded with the CARTO mesh but rather
+            #       with the exported mapped nodes
+            header = {'x': channel_data.shape[0],
+                      't': channel_data.shape[1],
+                      'inc_t': 1}
+
+            filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
+            f = writer.dump(filename, header, channel_data)
+            log.info('exported ecg trace {} to {}'.format(channel, f))
+
+        return
 
     def export_map_ecg(self, basename=''):
         """Export representative body surface ECG to JSON file.
