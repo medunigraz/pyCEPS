@@ -236,7 +236,7 @@ class PrecisionMap(EPMap):
         self.interpolate_data('act')
         self.interpolate_data('bip')
         # self.interpolate_data('uni')
-        self.ecg = self.get_map_ecg()
+        self.ecg = self.build_map_ecg()
 
     def load_mesh(self, *args, **kwargs):
         """
@@ -399,12 +399,13 @@ class PrecisionMap(EPMap):
         # convert ablation sites data to base class lesions
         self.lesions = self.ablation_sites_to_lesion()
 
-    def get_map_ecg(self, ecg_names=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
 
         Parameters:
+            method:
             ecg_names : list of str
                 ECG names to build. If note specified, 12-lead ECG is used
 

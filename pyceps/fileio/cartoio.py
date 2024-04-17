@@ -1196,7 +1196,9 @@ class CartoMap(EPMap):
         self.interpolate_data('uni')
         self.interpolate_data('imp')
         self.interpolate_data('frc')
-        self.bsecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
+
+        # build map BSECGs
+        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
 
     def load_mesh(self):
         """
@@ -1371,7 +1373,7 @@ class CartoMap(EPMap):
 
         self.lesions = self.visitag_to_lesion(self.parent.visitag.sites)
 
-    def get_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!

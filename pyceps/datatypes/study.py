@@ -561,7 +561,7 @@ class EPMap:
         """Import ablation data for mapping procedure."""
         raise NotImplementedError
 
-    def get_map_ecg(self, ecg_names=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
         """Build/Load body surface ECGs for this mapping procedure."""
         raise NotImplementedError
 
