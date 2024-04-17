@@ -1181,15 +1181,19 @@ class CartoMap(EPMap):
 
         self._import_attributes()
         self.surface = self.load_mesh()
+
         # check if parent study was imported or loaded
         # if it was loaded, some attributes are missing
         if not self.parent.mappingParams:
             log.info('study was probably loaded from file, need to re-import '
                      'basic study information')
             self.parent.import_study()
+
+        # load points
         self.points = self.load_points(
             study_tags=self.parent.mappingParams.TagsTable,
             egm_names_from_pos=egm_names_from_pos)
+
         # build surface maps
         self.interpolate_data('lat')
         self.interpolate_data('bip')
@@ -1607,7 +1611,7 @@ class CartoMap(EPMap):
         recording location point cloud ".pc.pts" or with locations projected
         onto the high-resolution mesh".ppc.pts".
 
-        By default, EGMs for all valid points are exported, but also a
+        By default, ECGs for all valid points are exported, but also a
         list of EPPoints to use can be given.
 
         If no ECG names are specified, 12-lead ECGs are exported
