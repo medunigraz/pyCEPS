@@ -1631,11 +1631,6 @@ class CartoMap(EPMap):
 
         log.info('exporting point ECG data')
 
-        if not self.parent.is_root_valid():
-            log.warning('a valid study root is necessary to dump ECG '
-                        'data for recording points!')
-            return
-
         if not points:
             points = self.get_valid_points()
         if not len(points) > 0:
@@ -1654,40 +1649,37 @@ class CartoMap(EPMap):
         if isinstance(which, str):
             which = [which]
 
-        # prepare data
-        data = np.full((len(points), 2500, len(which)),
-                       np.nan,
-                       dtype=np.float32)
+        # check if study repository is required to load data
+        import_names = [n for n in which
+                        for p in points
+                        if n not in [t.name for t in p.ecg]
+                        ]
+        if import_names and not self.parent.is_root_valid():
+            log.warning('a valid study root is necessary to dump ECG '
+                        'data for recording points!')
+            return
 
+        # load missing data
+        log.info('need to load missing ECG data before export')
         # get data point-wise (fastest for multiple channels)
         for i, point in enumerate(points):
             console_progressbar(
                 i + 1, len(points),
                 suffix=('Loading ECG for Point {}'.format(point.name))
             )
-            try:
-                data[i, :, :] = point.import_ecg(channel_names=which)
-            except KeyError as err:
-                log.warning('{}'.format(err))
-                continue
 
-        # export point files
-        self.export_point_cloud(points=points, basename=basename)
+            # check if ECGs were already loaded
+            import_names = [n for n in which
+                            if n not in [t.name for t in point.ecg]
+                            ]
+            if import_names:
+                log.debug('need to load ECGs {} for point {}'
+                          .format(import_names, point.name)
+                          )
+                point.ecg.extend(point.load_ecg(import_names))
 
-        # save data channel-wise
-        writer = FileWriter()
-        for i, channel in enumerate(which):
-            channel_data = data[:, :, i]
-            # save data to igb
-            # Note: this file cannot be loaded with the CARTO mesh but rather
-            #       with the exported mapped nodes
-            header = {'x': channel_data.shape[0],
-                      't': channel_data.shape[1],
-                      'inc_t': 1}
-
-            filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
-            f = writer.dump(filename, header, channel_data)
-            log.info('exported ecg trace {} to {}'.format(channel, f))
+        # everything was imported, ready to save
+        super().export_point_ecg(basename=basename, which=which, points=points)
 
         return
 
