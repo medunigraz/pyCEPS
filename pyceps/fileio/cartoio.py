@@ -1435,7 +1435,25 @@ class CartoMap(EPMap):
                 i+1, len(points),
                 suffix='Loading ECG(s) for point {}'.format(point.name)
             )
-            data[i, :, :] = point.import_ecg(channel_names=ecg_names)
+
+            # check if ECGs were already loaded
+            import_names = [n for n in ecg_names
+                            if n not in [t.name for t in point.ecg]
+                            ]
+            if import_names:
+                log.debug('need to load ECGs {} for point {}'
+                          .format(import_names, point.name)
+                          )
+                point.ecg.extend(point.load_ecg(import_names))
+
+            # append point ECG data
+            point_data = np.array(
+                [t.data for t in point.ecg
+                 for chn in ecg_names if t.name == chn]
+            )
+            data[i, :, :] = point_data.T
+
+            # check WOI and RefAnnotation
             if not point.woi[0] == woi[0] or not point.woi[1] == woi[1]:
                 log.warning('WOI changed in point {}'.format(point.name))
                 # make this WOI the new one
