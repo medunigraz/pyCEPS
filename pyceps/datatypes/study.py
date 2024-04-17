@@ -1195,6 +1195,8 @@ class EPPoint:
             two unipolar traces are stored
         egmRef : Trace
             reference trace
+        ecg : list of Trace
+            ecg traces for this point
         impedance : float
         force : float
 
@@ -1245,6 +1247,7 @@ class EPPoint:
         self.egmBip = None
         self.egmUni = None
         self.egmRef = None
+        self.ecg = []
 
         self.impedance = np.nan
         self.force = np.nan
