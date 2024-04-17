@@ -388,7 +388,7 @@ class EPStudy:
                                    )
             # export data from EPPoint baseclass only
             for key in list(EPPoint('dummy', parent=cmap).__dict__):
-                if key == 'parent':
+                if key in ['parent', 'ecg']:
                     # don't save this
                     continue
 
