@@ -237,8 +237,15 @@ class Repository:
         elif py7zr.is_7zfile(path):
             # build py7zr.SevenZipFile object
             return py7zr.SevenZipFile(path)
-
-        return path
+        elif os.path.isdir(path):
+            # points to folder, probably valid
+            return path
+        else:
+            # location or file type is not supported
+            log.warning('file {} is not supported as study repository!'
+                        .format(os.path.basename(path))
+                        )
+            return ''
 
     def update_root(self, path):
         """
