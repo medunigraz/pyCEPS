@@ -53,7 +53,8 @@ from pyceps.datatypes.cartotypes import (CartoUnits, Coloring, ColoringRange,
                                          )
 from pyceps.datatypes.lesions import Lesion, RFIndex
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
-from pyceps.exceptions import MapAttributeError, MeshFileNotFoundError
+from pyceps.exceptions import (MapAttributeError, MeshFileNotFoundError
+                               )
 from pyceps.utils import console_progressbar, get_col_idx_from_header
 
 
@@ -1111,6 +1112,11 @@ class CartoStudy(EPStudy):
 
         Raises:
             TypeError
+
+        Returns:
+            dict
+                'xml' : filepath to XML file
+                'name' : study name retrieved from XML
 
         """
 

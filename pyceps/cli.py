@@ -346,7 +346,7 @@ def load_study(args):
         # update argument in case of later usage
         args.study_file = study_file
 
-        # now we can load the object
+        # now we can open the file and try to load the object
         try:
             with open(study_file) as fid:
                 xml_root = ET.parse(fid).getroot()
