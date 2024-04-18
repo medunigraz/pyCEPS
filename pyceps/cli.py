@@ -356,16 +356,17 @@ def load_study(args):
 
         # get EAM system
         system = xml_root.get('system')
-        repo = xml_root.find('Repository')
 
         if system.lower() == 'carto3':
-            study = CartoStudy(study_repo=repo.get('base'),
-                               pwd=args.password,
-                               encoding=repo.get('encoding'))
-            study.load(study_file, repo_path=args.change_root)
-
+            study = CartoStudy.load(args.study_file,
+                                    password=args.password,
+                                    repository_path=args.change_root
+                                    )
         elif args.system == 'precision':
-            study = PrecisionStudy.load(study_file, root=args.change_root)
+            study = PrecisionStudy.load(args.study_file,
+                                        password=args.password,
+                                        repository_path=args.change_root
+                                        )
 
         else:
             raise KeyError('unknown EAM system specified!')
