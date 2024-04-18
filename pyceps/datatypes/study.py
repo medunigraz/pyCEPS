@@ -223,7 +223,8 @@ class EPStudy:
     def set_repository(self, root_dir):
         raise NotImplementedError
 
-    def load(self, file: str,  repo_path: str = ''):
+    @classmethod
+    def load(cls, file: str, repository_path: str = '', password: str = ''):
         """Load study object from .pyceps archive."""
         raise NotImplementedError
 

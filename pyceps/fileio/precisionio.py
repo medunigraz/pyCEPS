@@ -144,7 +144,7 @@ class PrecisionStudy(EPStudy):
         return True
 
     @classmethod
-    def load(cls, filename, root=None):
+    def load(cls, file: str, repository_path: str = '', password: str = ''):
         """
         Load pickled version of a study.
 

@@ -622,7 +622,8 @@ class CartoStudy(EPStudy):
 
         return grid_sites
 
-    def load(self, file: str,  repo_path: str = ''):
+    @classmethod
+    def load(cls, file: str, repository_path: str = '', password: str = ''):
         """
         Load study from file. Overrides BaseClass method.
 
@@ -635,8 +636,9 @@ class CartoStudy(EPStudy):
         Parameters:
             file : str
                 location of .pyceps file
-            repo_path : str
-                path to repository
+            repository_path : str
+                set repository root to this location
+            password : str
 
         Raises:
             TypeError : If file is not Carto3
