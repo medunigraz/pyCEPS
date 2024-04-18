@@ -19,6 +19,7 @@
 import os
 import logging
 import zipfile
+import py7zr
 import re
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
@@ -653,44 +654,119 @@ class CartoStudy(EPStudy):
         with open(file) as fid:
             root = ET.parse(fid).getroot()
 
+        # check if file was generated from Carto3 data
         system = root.get('system')
         if not system.lower() == "carto3":
             raise TypeError('expected Carto3 system file, found {}'
                             .format(system))
 
-        # load basic info
-        self.system = system
-        self.name = root.get('name')
-        self.studyXML = root.get('studyXML')
-        units = root.find('Units')
-        self.units = CartoUnits(units.get('distance'), units.get('angle'))
+        # create empty class instance
+        repo = root.find('Repository')
+        study = cls(study_repo=repo.get('base'),
+                    pwd=password,
+                    encoding=repo.get('encoding'))
 
-        # load additional meshes
-        mesh_item = root.find('AdditionalMeshes')
-        if mesh_item:
-            _, reg_matrix = xml_load_binary_data(
-                [x for x in mesh_item.findall('DataArray')
-                 if x.get('name') == 'registrationMatrix'][0]
+        # load basic info
+        study.name = root.get('name')
+        study.studyXML = root.get('studyXML')
+        units = root.find('Units')
+        study.units = CartoUnits(units.get('distance'), units.get('angle'))
+
+        VALID_ROOT = False
+        if repository_path:
+            # try to set root if explicitly given
+            log.info('trying to set study root to {}'.format(repository_path))
+
+            if study.set_repository(os.path.abspath(repository_path)):
+                log.info('setting study root to {}'.format(repository_path))
+                VALID_ROOT = True
+            else:
+                log.info('cannot set study root to {}\n'
+                         'Trying to use root information from file'
+                         .format(repository_path)
+                         )
+
+        if not VALID_ROOT:
+            # try to re-set previous study root
+            base_path = root.find('Repository').get('root')
+            log.info('trying to set study root to root from file: {}'
+                     .format(base_path)
+                     )
+
+            if study.set_repository(base_path):
+                log.info('previous study root is still valid ({})'
+                         .format(study.repository.root)
+                         )
+                VALID_ROOT = True
+
+        if not VALID_ROOT:
+            # try to search for studyXML in current location or at folder above
+            cur_dir = os.path.dirname(file)
+            log.info('no valid study root found so far, trying to search for '
+                     'repository at file location {}'
+                     .format(cur_dir))
+
+            # search in current pyCEPS file folder
+            filenames = [f for f in os.listdir(cur_dir)
+                         if (os.path.isfile(os.path.join(cur_dir, f))
+                             and (zipfile.is_zipfile(os.path.join(cur_dir, f))
+                                  or py7zr.is_7zfile(os.path.join(cur_dir, f))
+                                  )
+                             )
+                         or os.path.isdir(os.path.join(cur_dir, f))
+                         ]
+            for file in filenames:
+                try:
+                    if study.set_repository(os.path.join(cur_dir, file)):
+                        VALID_ROOT = True
+                        break
+                except:
+                    # some error occurred, don't care what exactly,
+                    # just continue
+                    continue
+
+            if not VALID_ROOT:
+                # search in folder above
+                log.info('searching in folder above file location...')
+                cur_dir = os.path.abspath(os.path.join(cur_dir, '..'))
+                filenames = [f for f in os.listdir(cur_dir)
+                             if (os.path.isfile(os.path.join(cur_dir, f))
+                                 and (zipfile.is_zipfile(os.path.join(cur_dir, f))
+                                      or py7zr.is_7zfile(
+                                        os.path.join(cur_dir, f))
+                                      )
+                                 )
+                             or os.path.isdir(os.path.join(cur_dir, f))
+                             ]
+                for file in filenames:
+                    try:
+                        if study.set_repository(os.path.join(cur_dir, file)):
+                            VALID_ROOT = True
+                            break
+                    except:
+                        # some error occurred, don't care what exactly,
+                        # just continue
+                        continue
+
+        if not VALID_ROOT:
+            # no valid root found so far, set to pkl directory
+            log.warning(
+                'no valid study root found. Using file location!'.upper()
             )
-            _, file_names = xml_load_binary_data(
-                [x for x in mesh_item.findall('DataArray')
-                 if x.get('name') == 'fileNames'][0]
-            )
-            self.meshes = Mesh(registrationMatrix=reg_matrix,
-                               fileNames=file_names
-                               )
+            study.repository.base = os.path.abspath(file)
+            study.repository.root = os.path.dirname(os.path.abspath(file))
 
         # load mapping procedures
         proc_item = root.find('Procedures')
         num_procedures = proc_item.get('count')
         sep = chr(int(proc_item.get('sep')))
-        self.mapNames = proc_item.get('names').split(sep)
-        self.mapPoints = [int(x) for x in proc_item.get('points').split(sep)]
+        study.mapNames = proc_item.get('names').split(sep)
+        study.mapPoints = [int(x) for x in proc_item.get('points').split(sep)]
 
         for proc in proc_item.iter('Procedure'):
             name = proc.get('name')
 
-            new_map = CartoMap(name, self.studyXML, parent=self)
+            new_map = CartoMap(name, study.studyXML, parent=study)
             new_map.surfaceFile = proc.get('meshFile')
             new_map.volume = float(proc.get('volume'))
 
@@ -723,36 +799,32 @@ class CartoStudy(EPStudy):
                         if hasattr(new_point, key):
                             setattr(new_point, key, value[i])
                         else:
-                            log.warning('cannot set attribute "{}" for CartoPoint'
-                                        .format(key))
+                            log.warning('cannot set attribute "{}" '
+                                        'for CartoPoint'
+                                        .format(key)
+                                        )
                     points.append(new_point)
                 new_map.points = points
 
             # now we can add the procedure to the study
-            self.maps[name] = new_map
+            study.maps[name] = new_map
 
-        # try to set root if explicitly given
-        if repo_path:
-            if self.set_repository(os.path.abspath(repo_path)):
-                log.info('setting study root to {}'.format(repo_path))
-                return
-            else:
-                log.info('cannot set study root to {}\n'
-                         'Trying to use root information from file'
-                         .format(repo_path))
+        # load additional meshes
+        mesh_item = root.find('AdditionalMeshes')
+        if mesh_item:
+            _, reg_matrix = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'registrationMatrix'][0]
+            )
+            _, file_names = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'fileNames'][0]
+            )
+            study.meshes = Mesh(registrationMatrix=reg_matrix,
+                                fileNames=file_names
+                                )
 
-        # try to re-set previous study root
-        base_path = root.find('Repository').get('root')
-        if self.set_repository(base_path):
-            log.info('previous study root is still valid ({})'
-                     .format(self.repository.root))
-            return
-
-        # no valid root found so far, set to pkl directory
-        log.warning(
-            'no valid study root found. Using file location!'.upper())
-        self.repository.base = os.path.abspath(file)
-        self.repository.root = os.path.dirname(os.path.abspath(file))
+        return study
 
     def save(self, filepath=''):
         """
