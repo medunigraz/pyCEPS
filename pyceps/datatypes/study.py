@@ -386,6 +386,7 @@ class EPStudy:
             points = ET.SubElement(proc, 'Points',
                                    count=str(len(cmap.points))
                                    )
+            # export data from EPPoint baseclass only
             for key in list(EPPoint('dummy', parent=cmap).__dict__):
                 if key == 'parent':
                     # don't save this
@@ -573,7 +574,8 @@ class EPMap:
 
         Parameters:
             which : str
-                parameter to interpolate, options: ['uni', 'bip', 'act']
+                parameter to interpolate
+                options: ['uni', 'bip', 'lat', 'imp', 'frc']
 
         Raises:
             KeyError : If parameter to interpolate is unknown
@@ -609,11 +611,29 @@ class EPMap:
             data = np.asarray([p.bipVoltage for p in valid_points])
         elif which.lower() == 'uni':
             data = np.asarray([p.uniVoltage for p in valid_points])
+        elif which.lower() == 'imp':
+            data = np.asarray([p.impedance for p in valid_points])
+        elif which.lower() == 'frc':
+            data = np.asarray([p.force for p in valid_points])
         else:
             raise KeyError()
 
+        # check if there is data for interpolation
+        if np.isnan(data).all():
+            log.debug('found only NaN in data, cannot interpolate map {}'
+                      .format(which.upper())
+                      )
+            return
+
+        # remove data for redundant points
+        data = data[unique_ids]
+        # remove any points with NaN's before interpolation
+        mask = ~np.isnan(data)
+        data = data[mask]
+        unique_points = unique_points[mask]
+
         interpolated = inverse_distance_weighting(unique_points,
-                                                  data[unique_ids],
+                                                  data,
                                                   mesh_points,
                                                   k=7)
 
@@ -838,15 +858,17 @@ class EPMap:
 
         if "IMP" in which:
             data = [point.impedance for point in points]
-            dat_file = basename + '.ptdata.IMP.pc.dat'
-            writer.dump(dat_file, data)
-            log.info('exported point data to {}'.format(dat_file))
+            if not np.isnan(data).all():
+                dat_file = basename + '.ptdata.IMP.pc.dat'
+                writer.dump(dat_file, data)
+                log.info('exported point data to {}'.format(dat_file))
 
         if "FRC" in which:
             data = [point.force for point in points]
-            dat_file = basename + '.ptdata.FRC.pc.dat'
-            writer.dump(dat_file, data)
-            log.info('exported point data to {}'.format(dat_file))
+            if not np.isnan(data).all():
+                dat_file = basename + '.ptdata.FRC.pc.dat'
+                writer.dump(dat_file, data)
+                log.info('exported point data to {}'.format(dat_file))
 
         return
 
