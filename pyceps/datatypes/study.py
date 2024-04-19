@@ -18,7 +18,7 @@
 import datetime
 import logging
 import os
-from typing import Iterable
+from typing import Iterable, List
 import numpy as np
 import xml.etree.ElementTree as ET
 import webbrowser
