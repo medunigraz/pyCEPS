@@ -130,6 +130,11 @@ def get_args():
              'study name e.g. <study_root>/../<study_name>.pyceps\n'
              'Custom location and file name can be given alternatively.'
     )
+    bio.add_argument(
+        '--keep-ecg',
+        action='store_true',
+        help='Save point ECG data in pyCEPS export file.'
+    )
 
     vis = parser.add_argument_group('Visualization')
     vis.add_argument(
@@ -528,7 +533,8 @@ def execute_commands(args):
     pyceps_loc = ''
     if args.save_study:
         pyceps_loc = study.save(None if args.save_study == 'DEFAULT' else
-                                args.save_study)
+                                args.save_study,
+                                keep_ecg=args.keep_ecg)
 
     # redirect log file
     if pyceps_loc:

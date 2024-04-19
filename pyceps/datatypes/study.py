@@ -18,7 +18,7 @@
 import datetime
 import logging
 import os
-from typing import Iterable
+from typing import Iterable, List
 import numpy as np
 import xml.etree.ElementTree as ET
 import webbrowser
@@ -288,7 +288,7 @@ class EPStudy:
 
         return export_folder
 
-    def save(self, filepath=''):
+    def save(self, filepath: str = '', keep_ecg: bool = False):
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -301,6 +301,8 @@ class EPStudy:
         Parameters:
             filepath : string (optional)
                 custom path for the output file
+            keep_ecg : bool
+                export point ECG data
 
         Raises:
             ValueError : If user input is not recognised
@@ -389,11 +391,18 @@ class EPStudy:
                                    )
             # export data from EPPoint baseclass only
             for key in list(EPPoint('dummy', parent=cmap).__dict__):
-                if key == 'parent':
+                if key in ['parent']:
                     # don't save this
                     continue
+                elif key == 'ecg' and keep_ecg:
+                    ecg_names = ['I', 'II', 'III',
+                                 'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                                 'aVL', 'aVR', 'aVF'
+                                 ]
+                    data = [p.get_ecg_traces(ecg_names) for p in cmap.points]
+                else:
+                    data = [getattr(p, key) for p in cmap.points]
 
-                data = [getattr(p, key) for p in cmap.points]
                 # handle maps with no points
                 if data:
                     is_trace = (all([isinstance(e, Trace) for e in data])
@@ -562,7 +571,10 @@ class EPMap:
         """Import ablation data for mapping procedure."""
         raise NotImplementedError
 
-    def get_map_ecg(self, ecg_names=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None,
+                      method=None,
+                      reload_data=False,
+                      *args, **kwargs):
         """Build/Load body surface ECGs for this mapping procedure."""
         raise NotImplementedError
 
@@ -1029,14 +1041,94 @@ class EPMap:
 
         return
 
-    def export_point_ecg(self, basename='', which=None, points=None):
+    def export_point_ecg(self, basename='',
+                         which=None,
+                         points=None,
+                         reload_data=False):
         """
         Export surface ECG traces in IGB format.
 
-        ECG data for points differs on EP systems, needs to be implemented
-        in specific data type.
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        By default, ECGs for all valid points are exported, but also a
+        list of EPPoints to use can be given.
+
+        If no ECG names are specified, 12-lead ECGs are exported
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ecg.<trace>.pc.igb
+
+        Parameters:
+            basename : string (optional)
+                path and filename of the exported files
+            which : string or list of strings
+                ECG name(s) to include in IGB file.
+            points : list of CartoPoints (optional)
+                EGM points to export
+            reload_data : boolean
+                reload ECG data if already loaded
+                Not used in BaseClass, all necessary data must be loaded by
+                ChildClass!
+
+        Returns:
+            None
         """
-        raise NotImplementedError
+
+        log.info('exporting point ECG data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        if not basename:
+            basename = self.parent.build_export_basename(self.name)
+            basename = os.path.join(basename, self.name)
+
+        if not which:
+            which = ['I', 'II', 'III',
+                     'aVR', 'aVL', 'aVF',
+                     'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        if isinstance(which, str):
+            which = [which]
+
+        # export point files
+        self.export_point_cloud(points=points, basename=basename)
+
+        # prepare data
+        data = np.full((len(points), 2500, len(which)),
+                       np.nan,
+                       dtype=np.float32)
+
+        # append point ECG data
+        for i, point in enumerate(points):
+            point_data = np.array(
+                [t.data for t in point.ecg for chn in which if t.name == chn]
+            )
+            data[i, :, :] = point_data.T
+
+        # save data channel-wise
+        writer = FileWriter()
+        for i, channel in enumerate(which):
+            channel_data = data[:, :, i]
+            # save data to igb
+            # Note: this file cannot be loaded with the CARTO mesh but rather
+            #       with the exported mapped nodes
+            header = {'x': channel_data.shape[0],
+                      't': channel_data.shape[1],
+                      'inc_t': 1}
+
+            filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
+            f = writer.dump(filename, header, channel_data)
+            log.info('exported ecg trace {} to {}'.format(channel, f))
+
+        return
 
     def export_map_ecg(self, basename=''):
         """Export representative body surface ECG to JSON file.
@@ -1196,6 +1288,8 @@ class EPPoint:
             two unipolar traces are stored
         egmRef : Trace
             reference trace
+        ecg : list of Trace
+            ecg traces for this point
         impedance : float
         force : float
 
@@ -1246,6 +1340,7 @@ class EPPoint:
         self.egmBip = None
         self.egmUni = None
         self.egmRef = None
+        self.ecg = []
 
         self.impedance = np.nan
         self.force = np.nan
@@ -1257,3 +1352,19 @@ class EPPoint:
     def is_valid(self):
         """Check if this point is valid."""
         raise NotImplementedError
+
+    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
+        """Import ECG data for this point."""
+        raise NotImplementedError
+
+    def get_ecg_names(self) -> List[str]:
+        """Return names of ECG channels which were already loaded."""
+        return [t.name for t in self.ecg]
+
+    def get_ecg_traces(self, ecg_names: List[str]) -> List[Trace]:
+        """Return subset of ECG traces."""
+        return [t for t in self.ecg if t.name in ecg_names]
+
+    def is_ecg_data_required(self, channel_names: List[str]) -> bool:
+        """Check if ECG data must be loaded or is already imported."""
+        return not set(channel_names).issubset(self.get_ecg_names())

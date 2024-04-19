@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
+from itertools import compress
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes import EPStudy, EPMap, EPPoint, Mesh
@@ -827,7 +828,7 @@ class CartoStudy(EPStudy):
 
         return study
 
-    def save(self, filepath=''):
+    def save(self, filepath: str = '', keep_ecg: bool = False):
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -840,6 +841,8 @@ class CartoStudy(EPStudy):
         Parameters:
             filepath : string (optional)
                 custom path for the output file
+            keep_ecg : bool
+                export point ECG data
 
         Raises:
             ValueError : If user input is not recognised
@@ -848,8 +851,44 @@ class CartoStudy(EPStudy):
             str : file path .pyceps was saved to
         """
 
+        # check if all ECG data is loaded
+        if keep_ecg:
+            log.info('ECG export requested, performing some checks first...')
+            # all point ECGs must contain the same channels for export
+            ecg_names = ['I', 'II', 'III',
+                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                         'aVL', 'aVR', 'aVF'
+                         ]
+            for cmap in self.maps.values():
+                # check if data is required
+                points = cmap.points
+                missing_data = [p.is_ecg_data_required(ecg_names)
+                                for p in points
+                                ]
+
+                if any(missing_data) and not self.is_root_valid():
+                    log.warning('valid study root is required to load ECG '
+                                'data!\n'
+                                '')
+                    keep_ecg = False
+                    break
+
+                if any(missing_data):
+                    log.info('missing ECG data, loading...')
+                    missing_points = list(compress(points, missing_data))
+                    for i, point in enumerate(missing_points):
+                        # update progress bar
+                        console_progressbar(
+                            i + 1, len(missing_points),
+                            suffix='Loading ECG(s) for point {}'.format(point.name)
+                        )
+
+                        point.ecg.extend(
+                            point.load_ecg(ecg_names, reload=False)
+                        )
+
         # add basic information to XML
-        root, filepath = super().save(filepath)
+        root, filepath = super().save(filepath, keep_ecg=keep_ecg)
 
         if not root:
             # no base info was created (no maps imported), nothing to add
@@ -1261,22 +1300,28 @@ class CartoMap(EPMap):
 
         self._import_attributes()
         self.surface = self.load_mesh()
+
         # check if parent study was imported or loaded
         # if it was loaded, some attributes are missing
         if not self.parent.mappingParams:
             log.info('study was probably loaded from file, need to re-import '
                      'basic study information')
             self.parent.import_study()
+
+        # load points
         self.points = self.load_points(
             study_tags=self.parent.mappingParams.TagsTable,
             egm_names_from_pos=egm_names_from_pos)
+
         # build surface maps
         self.interpolate_data('lat')
         self.interpolate_data('bip')
         self.interpolate_data('uni')
         self.interpolate_data('imp')
         self.interpolate_data('frc')
-        self.bsecg = self.get_map_ecg(method=['median', 'mse', 'ccf'])
+
+        # build map BSECGs
+        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
 
     def load_mesh(self):
         """
@@ -1451,7 +1496,10 @@ class CartoMap(EPMap):
 
         self.lesions = self.visitag_to_lesion(self.parent.visitag.sites)
 
-    def get_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None,
+                      method=None,
+                      reload_data=False,
+                      *args, **kwargs):
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
@@ -1473,6 +1521,8 @@ class CartoMap(EPMap):
                 'ccf': recorded ECG with highest cross-correlation to mean ecg
                 'mse': recorded ECG with lowest MSE to mean ecg
                 If not specified, all methods are used
+            reload_data : bool
+                reload ECG data or use if already loaded before
 
         Returns
             list of BodySurfaceECG
@@ -1500,9 +1550,29 @@ class CartoMap(EPMap):
 
         log.debug('found {} points in WOI'.format(len(points)))
 
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(ecg_names) for p in points]
+
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
+            return []
+
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
+
+                point.ecg.extend(point.load_ecg(ecg_names, reload=reload_data))
+
+        # data is available now, begin build
         data = np.full((len(points), 2500, len(ecg_names)),
                        np.nan,
-                       dtype=float)
+                       dtype=np.float32)
         ref = points[0].refAnnotation
         woi = points[0].woi
 
@@ -1511,9 +1581,17 @@ class CartoMap(EPMap):
             # update progress bar
             console_progressbar(
                 i+1, len(points),
-                suffix='Loading ECG(s) for point {}'.format(point.name)
+                suffix='Processing ECG(s) for point {}'.format(point.name)
             )
-            data[i, :, :] = point.import_ecg(channel_names=ecg_names)
+
+            # append point ECG data
+            point_data = np.array(
+                [t.data for t in point.ecg
+                 for chn in ecg_names if t.name == chn]
+            )
+            data[i, :, :] = point_data.T
+
+            # check WOI and RefAnnotation
             if not point.woi[0] == woi[0] or not point.woi[1] == woi[1]:
                 log.warning('WOI changed in point {}'.format(point.name))
                 # make this WOI the new one
@@ -1657,7 +1735,10 @@ class CartoMap(EPMap):
 
         return
 
-    def export_point_ecg(self, basename='', which=None, points=None):
+    def export_point_ecg(self, basename='',
+                         which=None,
+                         points=None,
+                         reload_data=False):
         """
         Export surface ECG traces in IGB format. Overrides BaseClass method.
 
@@ -1667,7 +1748,7 @@ class CartoMap(EPMap):
         recording location point cloud ".pc.pts" or with locations projected
         onto the high-resolution mesh".ppc.pts".
 
-        By default, EGMs for all valid points are exported, but also a
+        By default, ECGs for all valid points are exported, but also a
         list of EPPoints to use can be given.
 
         If no ECG names are specified, 12-lead ECGs are exported
@@ -1684,17 +1765,14 @@ class CartoMap(EPMap):
                 ECG name(s) to include in IGB file.
             points : list of CartoPoints (optional)
                 EGM points to export
+            reload_data : bool
+                reload ECG data if already loaded
 
         Returns:
             None
         """
 
-        log.info('exporting point ECG data')
-
-        if not self.parent.is_root_valid():
-            log.warning('a valid study root is necessary to dump ECG '
-                        'data for recording points!')
-            return
+        log.debug('preparing exporting point ECG data')
 
         if not points:
             points = self.get_valid_points()
@@ -1714,40 +1792,27 @@ class CartoMap(EPMap):
         if isinstance(which, str):
             which = [which]
 
-        # prepare data
-        data = np.full((len(points), 2500, len(which)),
-                       np.nan,
-                       dtype=np.float32)
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(which) for p in points]
 
-        # get data point-wise (fastest for multiple channels)
-        for i, point in enumerate(points):
-            console_progressbar(
-                i + 1, len(points),
-                suffix=('Loading ECG for Point {}'.format(point.name))
-            )
-            try:
-                data[i, :, :] = point.import_ecg(channel_names=which)
-            except KeyError as err:
-                log.warning('{}'.format(err))
-                continue
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
+            return
 
-        # export point files
-        self.export_point_cloud(points=points, basename=basename)
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
 
-        # save data channel-wise
-        writer = FileWriter()
-        for i, channel in enumerate(which):
-            channel_data = data[:, :, i]
-            # save data to igb
-            # Note: this file cannot be loaded with the CARTO mesh but rather
-            #       with the exported mapped nodes
-            header = {'x': channel_data.shape[0],
-                      't': channel_data.shape[1],
-                      'inc_t': 1}
+                point.ecg.extend(point.load_ecg(which, reload=reload_data))
 
-            filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
-            f = writer.dump(filename, header, channel_data)
-            log.info('exported ecg trace {} to {}'.format(channel, f))
+        # everything was imported, ready to save
+        super().export_point_ecg(basename=basename, which=which, points=points)
 
         return
 
@@ -2181,24 +2246,18 @@ class CartoPoint(EPPoint):
             self.uniX = uniCoordinates
 
         # now we can import the electrograms for this point
-        egm_data = self.import_ecg([egm_names['bip'],
-                                    egm_names['uni1'],
-                                    egm_names['uni2'],
-                                    egm_names['ref']])
+        egm_data = self.load_ecg([egm_names['bip'],
+                                  egm_names['uni1'],
+                                  egm_names['uni2'],
+                                  egm_names['ref']])
         # build egm traces
-        self.egmBip = Trace(name=egm_names['bip'],
-                            data=egm_data[:, 0].astype(np.float32),
-                            fs=1000.0)
-        self.egmUni = [Trace(name=egm_names['uni1'],
-                             data=egm_data[:, 1].astype(np.float32),
-                             fs=1000.0),
-                       Trace(name=egm_names['uni2'],
-                             data=egm_data[:, 2].astype(np.float32),
-                             fs=1000.0)
-                       ]
-        self.egmRef = Trace(name=egm_names['ref'],
-                            data=egm_data[:, 3].astype(np.float32),
-                            fs=1000.0)
+        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
+        egmUni = [
+            [t for t in egm_data if t.name == egm_names['uni1']][0],
+            [t for t in egm_data if t.name == egm_names['uni2']][0]
+        ]
+        self.egmUni = egmUni
+        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
@@ -2258,7 +2317,7 @@ class CartoPoint(EPPoint):
 
         return woi[0] < self.latAnnotation < woi[1]
 
-    def import_ecg(self, channel_names=None):
+    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
         """
         Load ECG data for this point.
 
@@ -2267,12 +2326,14 @@ class CartoPoint(EPPoint):
         Parameters:
             channel_names : string or list of string
                 channel names to read
+            reload : bool
+                reload data if already present
 
         Raises:
             KeyError : If a channel name is not found in ECG file
 
         Returns:
-             ndarray (2500, 1)
+             list of Trace
         """
 
         if not self.ecgFile:
@@ -2301,6 +2362,16 @@ class CartoPoint(EPPoint):
             raise KeyError('channel(s) {} not found for point {}'
                            .format(not_found, self.name))
 
+        if not reload:
+            # check which data is already loaded
+            channel_names = [n for n in channel_names
+                             if n not in self.get_ecg_names()
+                             ]
+            if not channel_names:
+                # all data already loaded, skip rest
+                return []
+
+        # get index of required channels in file
         cols = [ecg_channels.index(x) for channel in channel_names
                 for x in ecg_channels if x.startswith(channel+'(')]
 
@@ -2317,7 +2388,16 @@ class CartoPoint(EPPoint):
             # array has shape (2500,) but (2500,1) is needed
             ecg_data = np.expand_dims(ecg_data, axis=1)
 
-        return ecg_data.astype(np.float32)
+        # build Traces
+        traces = []
+        for i, name in enumerate(channel_names):
+            traces.append(
+                Trace(name=name,
+                      data=ecg_data[:, i].astype(np.float32),
+                      fs=1000.0)
+            )
+
+        return traces
 
     def _channel_names_from_ecg_header(self, ecg_header):
         """
