@@ -394,12 +394,15 @@ class EPStudy:
                 if key in ['parent']:
                     # don't save this
                     continue
-                elif key == 'ecg' and keep_ecg:
-                    ecg_names = ['I', 'II', 'III',
-                                 'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
-                                 'aVL', 'aVR', 'aVF'
-                                 ]
-                    data = [p.get_ecg_traces(ecg_names) for p in cmap.points]
+                elif key == 'ecg':
+                    if keep_ecg:
+                        ecg_names = ['I', 'II', 'III',
+                                     'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                                     'aVL', 'aVR', 'aVF'
+                                     ]
+                        data = [p.get_ecg_traces(ecg_names) for p in cmap.points]
+                    else:
+                        continue
                 else:
                     data = [getattr(p, key) for p in cmap.points]
 
