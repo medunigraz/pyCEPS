@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
+from itertools import compress
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.datatypes import EPStudy, EPMap, EPPoint, Mesh
@@ -1464,9 +1465,29 @@ class CartoMap(EPMap):
 
         log.debug('found {} points in WOI'.format(len(points)))
 
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(ecg_names) for p in points]
+
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
+            return []
+
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
+
+                point.ecg.extend(point.load_ecg(ecg_names, reload=reload_data))
+
+        # data is available now, begin build
         data = np.full((len(points), 2500, len(ecg_names)),
                        np.nan,
-                       dtype=float)
+                       dtype=np.float32)
         ref = points[0].refAnnotation
         woi = points[0].woi
 
@@ -1475,18 +1496,8 @@ class CartoMap(EPMap):
             # update progress bar
             console_progressbar(
                 i+1, len(points),
-                suffix='Loading ECG(s) for point {}'.format(point.name)
+                suffix='Processing ECG(s) for point {}'.format(point.name)
             )
-
-            # check if ECGs were already loaded
-            import_names = [n for n in ecg_names
-                            if n not in [t.name for t in point.ecg]
-                            ]
-            if import_names:
-                log.debug('need to load ECGs {} for point {}'
-                          .format(import_names, point.name)
-                          )
-                point.ecg.extend(point.load_ecg(import_names))
 
             # append point ECG data
             point_data = np.array(
@@ -1691,34 +1702,24 @@ class CartoMap(EPMap):
         if isinstance(which, str):
             which = [which]
 
-        # check if study repository is required to load data
-        import_names = [n for n in which
-                        for p in points
-                        if n not in [t.name for t in p.ecg]
-                        ]
-        if import_names and not self.parent.is_root_valid():
-            log.warning('a valid study root is necessary to dump ECG '
-                        'data for recording points!')
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(which) for p in points]
+
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
             return
 
-        # load missing data
-        log.info('need to load missing ECG data before export')
-        # get data point-wise (fastest for multiple channels)
-        for i, point in enumerate(points):
-            console_progressbar(
-                i + 1, len(points),
-                suffix=('Loading ECG for Point {}'.format(point.name))
-            )
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
 
-            # check if ECGs were already loaded
-            import_names = [n for n in which
-                            if n not in [t.name for t in point.ecg]
-                            ]
-            if import_names:
-                log.debug('need to load ECGs {} for point {}'
-                          .format(import_names, point.name)
-                          )
-                point.ecg.extend(point.load_ecg(import_names))
+                point.ecg.extend(point.load_ecg(which, reload=reload_data))
 
         # everything was imported, ready to save
         super().export_point_ecg(basename=basename, which=which, points=points)
