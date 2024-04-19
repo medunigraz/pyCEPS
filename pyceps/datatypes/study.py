@@ -1345,3 +1345,15 @@ class EPPoint:
     def load_ecg(self, channel_names=None, *args, **kwargs):
         """Import ECG data for this point."""
         raise NotImplementedError
+
+    def get_ecg_names(self) -> List[str]:
+        """Return names of ECG channels which were already loaded."""
+        return [t.name for t in self.ecg]
+
+    def get_ecg_traces(self, ecg_names: List[str]) -> List[Trace]:
+        """Return subset of ECG traces."""
+        return [t for t in self.ecg if t.name in ecg_names]
+
+    def is_ecg_data_required(self, channel_names: List[str]) -> bool:
+        """Check if ECG data must be loaded or is already imported."""
+        return not set(channel_names).issubset(self.get_ecg_names())
