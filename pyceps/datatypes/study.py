@@ -287,7 +287,7 @@ class EPStudy:
 
         return export_folder
 
-    def save(self, filepath=''):
+    def save(self, filepath: str = '', keep_ecg: bool = False):
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -300,6 +300,8 @@ class EPStudy:
         Parameters:
             filepath : string (optional)
                 custom path for the output file
+            keep_ecg : bool
+                export point ECG data
 
         Raises:
             ValueError : If user input is not recognised
@@ -388,11 +390,18 @@ class EPStudy:
                                    )
             # export data from EPPoint baseclass only
             for key in list(EPPoint('dummy', parent=cmap).__dict__):
-                if key in ['parent', 'ecg']:
+                if key in ['parent']:
                     # don't save this
                     continue
+                elif key == 'ecg' and keep_ecg:
+                    ecg_names = ['I', 'II', 'III',
+                                 'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                                 'aVL', 'aVR', 'aVF'
+                                 ]
+                    data = [p.get_ecg_traces(ecg_names) for p in cmap.points]
+                else:
+                    data = [getattr(p, key) for p in cmap.points]
 
-                data = [getattr(p, key) for p in cmap.points]
                 # handle maps with no points
                 if data:
                     is_trace = (all([isinstance(e, Trace) for e in data])

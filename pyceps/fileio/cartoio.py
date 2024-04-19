@@ -752,7 +752,7 @@ class CartoStudy(EPStudy):
         self.repository.base = os.path.abspath(file)
         self.repository.root = os.path.dirname(os.path.abspath(file))
 
-    def save(self, filepath=''):
+    def save(self, filepath: str = '', keep_ecg: bool = False):
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -765,6 +765,8 @@ class CartoStudy(EPStudy):
         Parameters:
             filepath : string (optional)
                 custom path for the output file
+            keep_ecg : bool
+                export point ECG data
 
         Raises:
             ValueError : If user input is not recognised
@@ -773,8 +775,44 @@ class CartoStudy(EPStudy):
             str : file path .pyceps was saved to
         """
 
+        # check if all ECG data is loaded
+        if keep_ecg:
+            log.info('ECG export requested, performing some checks first...')
+            # all point ECGs must contain the same channels for export
+            ecg_names = ['I', 'II', 'III',
+                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                         'aVL', 'aVR', 'aVF'
+                         ]
+            for cmap in self.maps.values():
+                # check if data is required
+                points = cmap.points
+                missing_data = [p.is_ecg_data_required(ecg_names)
+                                for p in points
+                                ]
+
+                if any(missing_data) and not self.is_root_valid():
+                    log.warning('valid study root is required to load ECG '
+                                'data!\n'
+                                '')
+                    keep_ecg = False
+                    break
+
+                if any(missing_data):
+                    log.info('missing ECG data, loading...')
+                    missing_points = list(compress(points, missing_data))
+                    for i, point in enumerate(missing_points):
+                        # update progress bar
+                        console_progressbar(
+                            i + 1, len(missing_points),
+                            suffix='Loading ECG(s) for point {}'.format(point.name)
+                        )
+
+                        point.ecg.extend(
+                            point.load_ecg(ecg_names, reload=False)
+                        )
+
         # add basic information to XML
-        root, filepath = super().save(filepath)
+        root, filepath = super().save(filepath, keep_ecg=keep_ecg)
 
         if not root:
             # no base info was created (no maps imported), nothing to add
