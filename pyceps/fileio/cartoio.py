@@ -1416,7 +1416,10 @@ class CartoMap(EPMap):
 
         self.lesions = self.visitag_to_lesion(self.parent.visitag.sites)
 
-    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None,
+                      method=None,
+                      reload_data=False,
+                      *args, **kwargs):
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
@@ -1438,6 +1441,8 @@ class CartoMap(EPMap):
                 'ccf': recorded ECG with highest cross-correlation to mean ecg
                 'mse': recorded ECG with lowest MSE to mean ecg
                 If not specified, all methods are used
+            reload_data : bool
+                reload ECG data or use if already loaded before
 
         Returns
             list of BodySurfaceECG
@@ -1650,7 +1655,10 @@ class CartoMap(EPMap):
 
         return
 
-    def export_point_ecg(self, basename='', which=None, points=None):
+    def export_point_ecg(self, basename='',
+                         which=None,
+                         points=None,
+                         reload_data=False):
         """
         Export surface ECG traces in IGB format. Overrides BaseClass method.
 
@@ -1677,12 +1685,14 @@ class CartoMap(EPMap):
                 ECG name(s) to include in IGB file.
             points : list of CartoPoints (optional)
                 EGM points to export
+            reload_data : bool
+                reload ECG data if already loaded
 
         Returns:
             None
         """
 
-        log.info('exporting point ECG data')
+        log.debug('preparing exporting point ECG data')
 
         if not points:
             points = self.get_valid_points()
@@ -2227,7 +2237,7 @@ class CartoPoint(EPPoint):
 
         return woi[0] < self.latAnnotation < woi[1]
 
-    def load_ecg(self, channel_names=None, *args, **kwargs):
+    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
         """
         Load ECG data for this point.
 
@@ -2236,6 +2246,8 @@ class CartoPoint(EPPoint):
         Parameters:
             channel_names : string or list of string
                 channel names to read
+            reload : bool
+                reload data if already present
 
         Raises:
             KeyError : If a channel name is not found in ECG file
@@ -2270,6 +2282,16 @@ class CartoPoint(EPPoint):
             raise KeyError('channel(s) {} not found for point {}'
                            .format(not_found, self.name))
 
+        if not reload:
+            # check which data is already loaded
+            channel_names = [n for n in channel_names
+                             if n not in self.get_ecg_names()
+                             ]
+            if not channel_names:
+                # all data already loaded, skip rest
+                return []
+
+        # get index of required channels in file
         cols = [ecg_channels.index(x) for channel in channel_names
                 for x in ecg_channels if x.startswith(channel+'(')]
 

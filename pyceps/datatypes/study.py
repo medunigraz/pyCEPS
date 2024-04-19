@@ -570,7 +570,10 @@ class EPMap:
         """Import ablation data for mapping procedure."""
         raise NotImplementedError
 
-    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
+    def build_map_ecg(self, ecg_names=None,
+                      method=None,
+                      reload_data=False,
+                      *args, **kwargs):
         """Build/Load body surface ECGs for this mapping procedure."""
         raise NotImplementedError
 
@@ -1037,7 +1040,10 @@ class EPMap:
 
         return
 
-    def export_point_ecg(self, basename='', which=None, points=None):
+    def export_point_ecg(self, basename='',
+                         which=None,
+                         points=None,
+                         reload_data=False):
         """
         Export surface ECG traces in IGB format.
 
@@ -1062,6 +1068,10 @@ class EPMap:
                 ECG name(s) to include in IGB file.
             points : list of CartoPoints (optional)
                 EGM points to export
+            reload_data : boolean
+                reload ECG data if already loaded
+                Not used in BaseClass, all necessary data must be loaded by
+                ChildClass!
 
         Returns:
             None
@@ -1342,7 +1352,7 @@ class EPPoint:
         """Check if this point is valid."""
         raise NotImplementedError
 
-    def load_ecg(self, channel_names=None, *args, **kwargs):
+    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
         """Import ECG data for this point."""
         raise NotImplementedError
 
