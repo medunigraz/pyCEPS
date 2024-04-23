@@ -29,7 +29,6 @@ from argparse import ArgumentParser, Action
 import logging
 import tempfile
 from typing import Tuple
-import xml.etree.ElementTree as ET
 
 from pyceps.fileio.cartoio import CartoStudy
 from pyceps.fileio.precisionio import PrecisionStudy
@@ -352,15 +351,20 @@ def load_study(args):
         args.study_file = study_file
 
         # now we can open the file and try to load the object
-        try:
-            with open(study_file) as fid:
-                xml_root = ET.parse(fid).getroot()
-        except ET.ParseError:
-            logger.warning('unknown file format, aborting!')
-            return None, args
-
-        # get EAM system
-        system = xml_root.get('system')
+        # read file line-wise, not using eTree for performance reasons
+        with open(study_file, 'r') as fid:
+            line = fid.readline()
+            if not line == '<?xml version="1.0" encoding="utf-8"?>\n':
+                logger.warning('unknown file format, aborting!')
+                return None, args
+            line = fid.readline()
+            try:
+                system = line.split('system="')[1].split('"')[0]
+            except IndexError:
+                logger.warning('unable to determine EAM system from file.\n'
+                               'key "system" not found in line {}'
+                               .format(line))
+                return None, args
 
         if system.lower() == 'carto3':
             study = CartoStudy.load(args.study_file,
