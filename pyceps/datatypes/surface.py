@@ -288,7 +288,6 @@ class Surface:
                 log.debug('added surface label {}'.format(name))
 
         writer = FileWriter()
-        # TODO: add surface map data and group-ID if available
         return writer.dump(filename,
                            self.X,
                            self.tris,
