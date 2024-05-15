@@ -24,7 +24,11 @@ class MapAttributeError(Exception):
         message : string
     """
 
-    def __init__(self, message):
+    def __init__(
+            self,
+            message: str
+    ) -> None:
+        """Constructor."""
         self.message = message
         super().__init__(self.message)
 
@@ -37,7 +41,12 @@ class MeshFileNotFoundError(Exception):
         message : string
     """
 
-    def __init__(self, filename, message='Mesh file {} not found!'):
+    def __init__(
+            self,
+            filename: str,
+            message: str = 'Mesh file {} not found!'
+    ) -> None:
+        """Constructor."""
         self.filename = filename
         self.message = message.format(self.filename)
 

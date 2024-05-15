@@ -229,7 +229,8 @@ def get_dash_app(study, bgnd=None):
         has_lesions = len(p_map.lesions) > 0
 
         # get available RF indexes
-        rfi_names = [to_drop_option(name) for name in p_map.get_rfi_names()]
+        rfi_names = [to_drop_option(name)
+                     for name in p_map.lesions.get_rfi_names()]
         has_rfi = len(rfi_names) > 0
 
         return (False,  # map info button enabled

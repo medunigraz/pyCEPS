@@ -30,8 +30,8 @@ import logging
 import tempfile
 from typing import Tuple
 
-from pyceps.fileio.cartoio import CartoStudy
-from pyceps.fileio.precisionio import PrecisionStudy
+from pyceps.carto import CartoStudy
+from pyceps.precision import PrecisionStudy
 
 
 logger = logging.getLogger('pyceps')
@@ -327,6 +327,7 @@ def load_study(args):
                                pwd=args.password,
                                encoding=args.encoding)
             study.import_study()
+            study.import_paso()
         elif args.system == 'PRECISION':
             study = PrecisionStudy(args.study_repository,
                                    pwd=args.password,
