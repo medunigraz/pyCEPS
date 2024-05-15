@@ -34,8 +34,6 @@ from pyceps.fileio import FileWriter
 from pyceps.fileio.xmlio import (xml_add_binary_numpy,
                                  xml_add_binary_trace,
                                  xml_add_binary_bsecg,
-                                 xml_add_binary_surface,
-                                 xml_add_binary_lesion
                                  )
 from pyceps.interpolation import (inverse_distance_weighting,
                                   remove_redundant_points
@@ -383,7 +381,8 @@ class EPStudy:
             proc = ET.SubElement(procedures, 'Procedure', name=cmap.name)
 
             # add surface mesh
-            xml_add_binary_surface(proc, cmap.surface)
+            if cmap.surface.has_points():
+                cmap.surface.add_to_xml(proc)
 
             # add mapping points
             points = ET.SubElement(proc, 'Points',
@@ -423,7 +422,8 @@ class EPStudy:
             xml_add_binary_bsecg(proc, cmap.bsecg)
 
             # add lesion data
-            xml_add_binary_lesion(proc, cmap.lesions)
+            if cmap.lesions:
+                cmap.lesions.add_to_xml(proc)
 
         return root, filepath
 
@@ -455,7 +455,7 @@ class EPMap:
             the mapping points recorded during mapping procedure
         bsecg : list of BodySurfaceECG
             body surface ECG data for the mapping procedure
-        lesions : list of Lesion
+        lesions : Lesions
             ablation data for this mapping procedure
 
     Methods:
@@ -536,7 +536,7 @@ class EPMap:
         self.surface = None
         self.points = []
         self.bsecg = []
-        self.lesions = []
+        self.lesions = None
 
     def get_valid_points(self, return_invalid=False):
         """
@@ -1201,7 +1201,7 @@ class EPMap:
             None
         """
 
-        if not len(self.lesions) > 0:
+        if not self.lesions and not len(self.lesions.sites) > 0:
             log.info('no lesion data found for map {}'.format(self.name))
             return
 
@@ -1216,10 +1216,10 @@ class EPMap:
         export_file = os.path.join(basename, self.name + '.lesions')
 
         # get RFIndex names
-        names, counts = self.get_rfi_names(return_counts=True)
+        names, counts = self.lesions.get_rfi_names(return_counts=True)
 
         # check validity first
-        if not counts.sum() == len(self.lesions):
+        if not counts.sum() == len(self.lesions.sites):
             log.warning('cannot export RFI data! mismatch between lesion '
                         'size ({}) and parameters (names: {}, sites: {})'
                         .format(len(self.lesions), names, counts))
@@ -1228,35 +1228,30 @@ class EPMap:
         # dump RFI
         for name, count in zip(names, counts):
             # dump points
-            points = [site.X for site in self.lesions for x in site.RFIndex
+            points = [site.X
+                      for site in self.lesions.sites
+                      for x in site.RFIndex
                       if x.name == name]
             writer.dump(export_file + '.' + name + '.pts', np.array(points))
             writer.dump(export_file + '.' + name + '.pts_t', np.array(points))
 
             # dump RFI data
-            rfi = [x.value for site in self.lesions for x in site.RFIndex
+            rfi = [x.value
+                   for site in self.lesions.sites
+                   for x in site.RFIndex
                    if x.name == name]
             writer.dump(export_file + '.' + name + '.dat', np.array(rfi))
             writer.dump(export_file + '.' + name + '.dat_t', np.array(rfi))
 
             # dump lesion diameters
-            d = [site.diameter for site in self.lesions for x in site.RFIndex
+            d = [site.diameter
+                 for site in self.lesions.sites
+                 for x in site.RFIndex
                  if x.name == name]
             writer.dump(export_file + '.' + name + '.diameter.dat',
                         np.array(d))
             writer.dump(export_file + '.' + name + '.diameter.dat_t',
                         np.array(d))
-
-    def get_rfi_names(self, return_counts=False):
-        """Return unique RF parameter names in lesions data."""
-
-        names = [x.name for lesion in self.lesions for x in lesion.RFIndex]
-        names, counts = np.unique(names, return_counts=True)
-
-        if return_counts:
-            return names, counts
-
-        return names
 
 
 class EPPoint:

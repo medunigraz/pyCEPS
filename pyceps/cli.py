@@ -30,8 +30,8 @@ import logging
 import tempfile
 from typing import Tuple
 
-from pyceps.fileio.cartoio import CartoStudy
-from pyceps.fileio.precisionio import PrecisionStudy
+from pyceps.carto import CartoStudy
+from pyceps.precision import PrecisionStudy
 
 
 logger = logging.getLogger('pyceps')
