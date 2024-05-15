@@ -2115,8 +2115,8 @@ class CartoMap(EPMap):
                     point_id = int(point.name[1:])
                     point_coord = point.prjX
 
-                    idx_min = np.argmin(np.abs(point.force.time))
-                    acq_time = point.force.systemTime[idx_min]
+                    idx_min = np.argmin(np.abs(point.forceData.time))
+                    acq_time = point.forceData.systemTime[idx_min]
 
                     sys_time = rf_force.time
                     idx_min = np.argmin(np.abs(sys_time - acq_time))
