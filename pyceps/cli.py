@@ -327,6 +327,7 @@ def load_study(args):
                                pwd=args.password,
                                encoding=args.encoding)
             study.import_study()
+            study.import_paso()
         elif args.system == 'PRECISION':
             study = PrecisionStudy(args.study_repository,
                                    pwd=args.password,
