@@ -1034,9 +1034,10 @@ class EPMap:
                       't': data.shape[1],
                       'unites_t': 'ms',
                       'unites': 'mV',
-                      'dim_t': data.shape[0]-1,
+                      'dim_t': data.shape[1]-1,
                       'org_t': 0,
-                      'inc_t': 1}
+                      'inc_t': 1
+                      }
 
             filename = '{}.egm.{}.igb'.format(basename, key)
             f = writer.dump(filename, header, data)
@@ -1125,7 +1126,12 @@ class EPMap:
             #       with the exported mapped nodes
             header = {'x': channel_data.shape[0],
                       't': channel_data.shape[1],
-                      'inc_t': 1}
+                      'unites_t': 'ms',
+                      'unites': 'mV',
+                      'dim_t': data.shape[1] - 1,
+                      'org_t': 0,
+                      'inc_t': 1
+                      }
 
             filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
             f = writer.dump(filename, header, channel_data)
