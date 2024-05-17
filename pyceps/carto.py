@@ -18,6 +18,7 @@
 
 import os
 import logging
+from typing import Optional, Union, List
 import zipfile
 import py7zr
 import re
@@ -65,6 +66,1627 @@ from pyceps.utils import console_progressbar, get_col_idx_from_header
 
 
 log = logging.getLogger(__name__)
+
+
+class CartoPoint(EPPoint):
+    """
+    Class representing Carto3 point.
+
+    Attributes:
+        name : str
+            identifier for this recording point
+        pointFile : str
+            name of the points XML file <map_name>_<point_ID>_Point_Export.xml
+        parent : CartoMap
+            parent mapping procedure this point belongs to
+        recX : ndarray (3, )
+            coordinates at which this point was recorded
+        prjX : ndarray (3, )
+            coordinates of the closest anatomical shell vertex
+        prjDistance : float
+            distance between recording location and closest shell vertex
+        refAnnotation : int
+            annotation for reference detection in samples
+        latAnnotation : int
+            annotation for local activation time in samples
+        woi : ndarray (2, 1)
+            start and end timestamps of the WOI in samples
+        uniVoltage : float
+            peak-to-peak voltage in unipolar EGM
+        bipVoltage : float
+            peak-to-peak voltage in bipolar EGM
+        egmBip : Trace
+            bipolar EGM trace
+        egmUni : Trace
+            unipolar EGm trace(s). If supported by the mapping system,
+            two unipolar traces are stored
+        egmRef : Trace
+            reference trace
+        impedance : float
+        force : float
+        barDirection : ndarray (3, 1)
+            surface normal of the closest surface point
+        tags : list of str
+            tags assigned to this point, i.e. 'Full_name' in study's TagsTable
+        ecgFile : str
+            name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
+        uniX : ndarray (3, )
+            cartesian coordinates of the second unipolar recording electrode
+            NOTE: coordinates of second unipolar electrode are same as recX if
+            position cannot be determined
+        forceFile : str
+            name of the points contact force file
+            <map_name>_<point_name>_Contact_Force.txt
+        forceData : PointForce
+            full contact force data for this point
+        impedanceData : PointImpedance
+            full impedance data for this point
+
+    Methods:
+        is_valid()
+            check if point has LAT annotation within WOI
+        load(egm_names_from_pos=False)
+            load all data associated with this point
+        import_ecg(channel_names)
+            import ECG data for this point
+
+    """
+
+    def __init__(self, name,
+                 coordinates=np.full(3, np.nan, dtype=np.float32),
+                 tags=None,
+                 parent=None):
+        """
+        Constructor.
+
+        Parameters:
+             name : str
+                name / identifier for this point
+            coordinates : ndarray(3, )
+                cartesian coordinates of recording position
+            tags: list of str (optional)
+                tags assigned to this point, i.e. 'Full_name' in study's
+                TagsTable
+            parent : CartoMap
+                the map this point belongs to
+
+        Returns:
+            None
+
+        """
+
+        super().__init__(name, coordinates=coordinates, parent=parent)
+
+        # add Carto3 specific attributes
+        self.pointFile = ''
+        self.barDirection = None
+        self.tags = tags
+        self.ecgFile = ''
+        self.uniX = np.full(3, np.nan, dtype=np.float32)
+        self.forceFile = ''
+        self.forceData = None
+        self.impedanceData = None
+
+    def import_point(self, point_file, egm_names_from_pos=False):
+        """
+        Load data associated with this point.
+
+        Parameters:
+            point_file : str
+                name of this points XML file
+                <map_name>_<point_name>_Point_Export.xml
+            egm_names_from_pos : boolean
+                If True, EGM electrode names are extracted from positions file.
+                This also returns name and coordinates of the second unipolar
+                channel.
+
+        Raises:
+            FileNotFoundError : if point's XML is not found
+
+        Returns:
+            None
+
+        """
+
+        log.debug('Loading point data for point {}'.format(self.name))
+
+        file_loc = self.parent.parent.repository.join(point_file)
+        if not self.parent.parent.repository.is_file(file_loc):
+            log.info('Points export file {} does not exist'
+                     .format(point_file))
+            raise FileNotFoundError
+        self.pointFile = point_file
+
+        # read annotation data
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
+            root = ET.parse(fid).getroot()
+
+        annotation_item = root.find('Annotations')
+        self.refAnnotation = int(annotation_item.get('Reference_Annotation'))
+        self.latAnnotation = int(annotation_item.get('Map_Annotation'))
+        woi_item = root.find('WOI')
+        self.woi = np.asarray([woi_item.get('From'),
+                               woi_item.get('To')]
+                              ).astype(int)
+        voltages_item = root.find('Voltages')
+        self.uniVoltage = float(voltages_item.get('Unipolar'))
+        self.bipVoltage = float(voltages_item.get('Bipolar'))
+
+        # read impedance data
+        impedance_item = root.find('Impedances')
+        n_impedance_values = int(impedance_item.get('Number'))
+        if n_impedance_values > 0:
+            impedance_value = np.empty(n_impedance_values, dtype=np.float32)
+            impedance_time = np.empty(n_impedance_values, dtype=np.int32)
+            for i, x in enumerate(impedance_item.findall('Impedance')):
+                impedance_time[i] = x.get('Time')
+                impedance_value[i] = x.get('Value')
+
+            self.impedanceData = PointImpedance(time=impedance_time,
+                                                value=impedance_value)
+            # update base class impedance value with the one closest to LAT
+            self.impedance = impedance_value[
+                np.nanargmin(np.abs(impedance_time - self.latAnnotation))
+            ]
+
+        self.ecgFile = root.find('ECG').get('FileName')
+
+        # get egm names from ECG file
+        ecg_file = self.parent.parent.repository.join(self.ecgFile)
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_file_header = read_ecg_file_header(
+                fid,
+                encoding=self.parent.parent.encoding
+            )
+        if ecg_file_header['version'] == '4.1':
+            # channel names are given in pointFile for version 4.1+
+            ecg_file_header['name_bip'] = root.find('ECG').get(
+                'BipolarMappingChannel')
+            ecg_file_header['name_uni'] = root.find('ECG').get(
+                'UnipolarMappingChannel')
+            ecg_file_header['name_ref'] = root.find('ECG').get(
+                'ReferenceChannel')
+        egm_names = self._channel_names_from_ecg_header(ecg_file_header)
+
+        # get coordinates of second unipolar channel
+        self.uniX = self._get_2nd_uni_x(encoding=self.parent.parent.encoding)
+
+        if egm_names_from_pos:
+            egm_names, uniCoordinates = self._channel_names_from_pos_file(
+                egm_names,
+                encoding=self.parent.parent.encoding
+            )
+            self.uniX = uniCoordinates
+
+        # now we can import the electrograms for this point
+        egm_data = self.load_ecg([egm_names['bip'],
+                                  egm_names['uni1'],
+                                  egm_names['uni2'],
+                                  egm_names['ref']])
+        # build egm traces
+        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
+        egmUni = [
+            [t for t in egm_data if t.name == egm_names['uni1']][0],
+            [t for t in egm_data if t.name == egm_names['uni2']][0]
+        ]
+        self.egmUni = egmUni
+        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
+
+        # get the closest surface vertex for this point
+        if self.parent.surface.has_points():
+            closest, distance, direct = self.parent.surface.get_closest_vertex(
+                [self.recX]
+            )
+            if closest.shape[0] != 1:
+                log.warning('found no or multiple surface vertices closest to '
+                            'to point {}: {}'
+                            .format(self.name, closest))
+            self.prjX = np.array(closest[0], dtype=np.float32)
+            self.prjDistance = distance[0]
+            self.barDirection = direct[0]
+
+        # now get the force data for this point
+        log.debug('reading force file for point {}'.format(self.name))
+        try:
+            self.forceFile = root.find('ContactForce').get('FileName')
+            force_file = self.parent.parent.repository.join(self.forceFile)
+            if self.parent.parent.repository.is_file(force_file):
+                with self.parent.parent.repository.open(force_file) as fid:
+                    self.forceData = read_force_file(
+                        fid, encoding=self.parent.parent.encoding
+                    )
+                if np.isnan(self.forceData.force):
+                    # update base class force value with the one closest to LAT
+                    self.force = self.forceData.timeForce[
+                        np.nanargmin(np.abs(self.forceData.timeForce
+                                            - self.latAnnotation)
+                                     )
+                    ]
+                else:
+                    self.force = self.forceData.force
+
+            else:
+                log.debug('No force file found for point {}'.format(self.name))
+        except AttributeError:
+            log.debug('No force data saved for point {}'.format(self.name))
+
+    def is_valid(self):
+        """
+        Check if LAT annotation is within the WOI.
+
+        Raises:
+            ValueError : If no WOI or reference annotation is found or there
+                no LAT annotation for this point
+
+        Returns:
+            True if the points map annotation is within the WOI, else False
+
+        """
+
+        if not self.latAnnotation:
+            log.warning('no activation annotation found for {}!'
+                        .format(self.name)
+                        )
+            raise ValueError('Parameter mapAnnotation missing!')
+        if self.woi.size == 0 or not self.refAnnotation:
+            log.warning('no woi and/or reference annotation found for {}!'
+                        .format(self.name)
+                        )
+            raise ValueError('Parameters WOI and/or refAnnotation missing!')
+
+        woi = self.woi + self.refAnnotation
+
+        return woi[0] < self.latAnnotation < woi[1]
+
+    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
+        """
+        Load ECG data for this point.
+
+        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
+
+        Parameters:
+            channel_names : string or list of string
+                channel names to read
+            reload : bool
+                reload data if already present
+
+        Raises:
+            KeyError : If a channel name is not found in ECG file
+
+        Returns:
+             list of Trace
+        """
+
+        if not self.ecgFile:
+            log.warning('No ECG file found for point {}'.format(self.name))
+            return None
+
+        ecg_file = self.parent.parent.repository.join(self.ecgFile)
+
+        if isinstance(channel_names, str):
+            channel_names = [channel_names]
+
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_header = read_ecg_file_header(fid)
+        ecg_channels = ecg_header['ecg_names']
+
+        not_found = []
+        if not channel_names:
+            # read all channels
+            channel_names = ecg_channels
+        else:
+            # check if all names are valid
+            not_found = [item for item in channel_names
+                         if not any([channel.startswith(item+'(')
+                                     for channel in ecg_channels])]
+        if not_found:
+            raise KeyError('channel(s) {} not found for point {}'
+                           .format(not_found, self.name))
+
+        if not reload:
+            # check which data is already loaded
+            channel_names = [n for n in channel_names
+                             if n not in self.get_ecg_names()
+                             ]
+            if not channel_names:
+                # all data already loaded, skip rest
+                return []
+
+        # get index of required channels in file
+        cols = [ecg_channels.index(x) for channel in channel_names
+                for x in ecg_channels if x.startswith(channel+'(')]
+
+        with self.parent.parent.repository.open(ecg_file) as fid:
+            ecg_data = read_ecg_file(fid,
+                                     column_indices=cols,
+                                     skip_rows=ecg_header['header_lines']
+                                     )
+        ecg_data *= ecg_header['gain']
+
+        try:
+            ecg_data.shape[1]
+        except IndexError:
+            # array has shape (2500,) but (2500,1) is needed
+            ecg_data = np.expand_dims(ecg_data, axis=1)
+
+        # build Traces
+        traces = []
+        for i, name in enumerate(channel_names):
+            traces.append(
+                Trace(name=name,
+                      data=ecg_data[:, i].astype(np.float32),
+                      fs=1000.0)
+            )
+
+        return traces
+
+    def _channel_names_from_ecg_header(self, ecg_header):
+        """
+        Get channel names for BIP, UNI and REF traces from file header.
+
+        This function also tries to extract the name of the second unipolar
+        channel from the bipolar channel name.
+
+        Parameters:
+            ecg_header : dict
+                header info returned from read_ecg_file_header()
+
+        Returns:
+            dict : channel names
+                keys: 'bip', 'uni1', 'uni2', 'ref'
+        """
+
+        log.debug('extracting channel names from ECG header for point {}'
+                  .format(self.name))
+
+        # MEC connector names have different naming convention
+        if ecg_header['name_bip'].startswith('MCC'):
+            log.warning('point {} was recorded with MEC connector, unipolar '
+                        'channel names might be wrong!'
+                        .format(self.name))
+            uni_name1 = ecg_header['name_uni']
+            # TODO: fix second unipolar channel name for MCC Ablation
+            uni_name2 = uni_name1
+
+        else:
+            # get unipolar names from bipolar electrode names
+            try:
+                connector, channels = ecg_header['name_bip'].split('_')
+                channel_num = channels.split('-')
+                uni_name1 = connector + '_' + channel_num[0]
+                uni_name2 = connector + '_' + channel_num[1]
+            except ValueError:
+                # some connectors don't add the connector name at beginning
+                channel_names = ecg_header['name_bip'].split('-')
+                uni_name1 = channel_names[0]
+                uni_name2 = channel_names[1]
+
+        # compare extracted names with header info
+        if not uni_name1 == ecg_header['name_uni']:
+            log.warning('extracted unipolar EGM channel name does not match '
+                        'ECG header info! Using header info!')
+            uni_name1 = ecg_header['name_uni']
+            uni_name2 = uni_name1
+
+        return {'bip': ecg_header['name_bip'],
+                'uni1': uni_name1,
+                'uni2': uni_name2,
+                'ref': ecg_header['name_ref']
+                }
+
+    def _get_2nd_uni_x(self, encoding='cp1252'):
+        """
+        Get coordinates for 2nd unipolar channel from position file(s).
+
+        Searches for recording coordinates in position file(s) and extracts
+        coordinates of the subsequent channel. This should be the correct
+        second unipolar channel for bipolar recordings.
+
+        NOTE: If coordinates cannot be determined, the recording position of
+        the first unipolar channel is used!
+
+        NOTE: Method _channel_names_from_pos_file is more elaborate but
+        fails often for missing channel positions in position files!
+
+        Parameters:
+            encoding:
+
+        Returns:
+            ndarray(3, )
+                coordinates of the second unipolar channel
+
+        """
+
+        xyz_2 = np.full(3, np.nan, dtype=np.float32)
+
+        log.debug('get position of 2nd unipolar channel')
+
+        # read points XML file
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
+            root = ET.parse(fid).getroot()
+
+        # get position files
+        position_files = []
+        for connector in root.find('Positions').findall('Connector'):
+            connector_file = list(connector.attrib.values())[0]
+            if 'ectrode_positions_onannotation' in connector_file.lower():
+                position_files.append(connector_file)
+
+        for filename in position_files:
+            pos_file = self.parent.parent.repository.join(filename)
+            if not self.parent.parent.repository.is_file(pos_file):
+                log.warning('position file {} for point {} not found'
+                            .format(filename, self.name))
+                continue
+
+            with self.parent.parent.repository.open(pos_file) as fid:
+                idx, time, xyz = read_electrode_pos_file(fid, encoding=encoding)
+
+            # find electrode with the closest distance
+            dist = sp_distance.cdist(xyz, np.expand_dims(self.recX, axis=1).T).flatten()
+            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
+            if idx_closest.size != 1:
+                log.debug(
+                    'found no or multiple electrodes with same minimum '
+                    'distance in file {}. Trying next file...'
+                    .format(filename))
+                continue
+            idx_closest = idx_closest[0]
+            if dist[idx_closest] > 0:
+                # position must be exact match
+                continue
+
+            try:
+                xyz_2 = xyz[idx_closest + 1, :]
+            except IndexError:
+                log.debug('unable to get position of 2nd uni channel for '
+                          'point {}'.format(self.name))
+
+        if np.isnan(xyz_2).all():
+            log.warning('coordinates for 2nd unipolar channel not found for '
+                        'point {}, using recording position'
+                        .format(self.name))
+            xyz_2 = self.recX
+
+        return xyz_2
+
+    def _channel_names_from_pos_file(self, egm_names, encoding='cp1252'):
+        """
+        Get channel names for BIP, UNI and REF traces from electrode positions.
+
+        Extracted names are compared to EGM names in CARTO point ECG file. If
+        discrepancies are found, the names from the ECG files are used.
+
+        Parameters:
+            egm_names : dict
+                names extracted from ECG file for comparison
+            encoding :
+
+        Returns:
+            dict : channel names
+                keys: 'bip', 'uni1', 'uni2', 'ref'
+        """
+
+        log.debug('extracting channel names from position files for point {}'
+                  .format(self.name))
+
+        # read points XML file
+        point_file = self.parent.parent.repository.join(self.pointFile)
+        with self.parent.parent.repository.open(point_file) as fid:
+            root = ET.parse(fid).getroot()
+
+        # get position files
+        position_files = []
+        for connector in root.find('Positions').findall('Connector'):
+            connector_file = list(connector.attrib.values())[0]
+            if connector_file.lower().endswith('ectrode_positions_onannotation.txt'):
+                position_files.append(connector_file)
+
+        bipName, uniName, xyz_2 = self._find_electrode_at_pos(
+            self.recX,
+            position_files,
+            encoding=encoding
+        )
+        uniCoordinates = np.stack((self.recX, xyz_2), axis=-1)
+
+        # now check the name of the electrode identified above by
+        # comparing with the ECG_Export file
+        if not egm_names['bip'] == bipName:
+            log.warning('Conflict: bipolar electrode name {} from position '
+                        'file does not match electrode name {} in ECG file!\n'
+                        'Using name from ECG file for point {}.'
+                        .format(bipName, egm_names['bip'], self.name)
+                        )
+            bipName = egm_names['bip']
+
+        if not egm_names['uni1'] == uniName[0]:
+            log.warning('Conflict: unipolar electrode name {} from position '
+                        'file does not match electrode name {} in ECG file!\n'
+                        'Using name from ECG file for point {}.'
+                        .format(uniName[0], egm_names['uni1'], self.name)
+                        )
+            uniName[0] = egm_names['uni1']
+            uniName[1] = egm_names['uni2']
+
+        names = {'bip': bipName,
+                 'uni1': uniName[0],
+                 'uni2': uniName[1],
+                 'ref': egm_names['uni1']
+                 }
+
+        return names, uniCoordinates
+
+    def _find_electrode_at_pos(self,
+                               point_xyz,
+                               position_files,
+                               encoding='cp1252'):
+        """
+        Find electrode that recorded Point at xyz.
+
+        This function also tries to identify the name and coordinates of the
+        second unipolar channel which made the bipolar recording.
+
+        Parameters:
+            point_xyz : ndarray (3, 1)
+                coordinates of the point
+            position_files : list of string
+                path to the position files
+            encoding :
+
+        Returns:
+             egm_name_bip : string
+                name of the bipolar channel
+            egm_name_uni : list of string
+                names of the unipolar channels
+            xyz_2 : ndarray (3, )
+                coordinates of the second unipolar channel
+        """
+
+        log.debug('find electrode that recorded point at {}'
+                  .format(point_xyz))
+
+        egm_name_bip = ''
+        egm_name_uni = ['', '']
+        xyz_2 = np.full(3, np.nan, dtype=np.float32)
+
+        channel_number = np.nan
+
+        for filename in position_files:
+            pos_file = self.parent.parent.repository.join(filename)
+            if not self.parent.parent.repository.is_file(pos_file):
+                log.warning('position file {} for point {} not found'
+                            .format(filename, self.name))
+                continue
+
+            with self.parent.parent.repository.open(pos_file) as fid:
+                idx, time, xyz = read_electrode_pos_file(fid)
+
+            # calculate range of electrode positions and add last index
+            lim = np.append(np.where(idx[:-1] != idx[1:])[0], len(idx) - 1)
+
+            # find electrode with the closest distance
+            dist = sp_distance.cdist(xyz, np.array([point_xyz])).flatten()
+            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
+            if idx_closest.size != 1:
+                log.debug('found no or multiple electrodes with same minimum '
+                          'distance in file {}. Trying next file...'
+                          .format(filename))
+                continue
+            idx_closest = idx_closest[0]
+            if dist[idx_closest] > 0:
+                # position must be exact match
+                continue
+
+            # get channel list and index for reduced positions
+            electrode_idx = lim.searchsorted(idx_closest, 'left')
+            channel_list = idx[lim]
+
+            # find second unipolar channel recorded at same time in next
+            # position block
+            time_closest = time[idx_closest]
+            # get block limits
+            try:
+                block_start = lim[electrode_idx] + 1
+                idx_end = lim[electrode_idx+1] + 1
+            except IndexError:
+                log.warning('point was recorded with last electrode, unable '
+                            'to get second channel!')
+                continue
+
+            block_end = idx_end if (idx_end < time.shape[0]) else None
+            idx_time = np.argwhere(time[block_start:block_end] == time_closest).flatten()
+            if idx_time.size != 1:
+                log.debug('found no matching time stamp for second unipolar '
+                          'channel in file {}'
+                          .format(filename))
+            else:
+                xyz_2 = xyz[idx_time[0] + lim[electrode_idx] + 1, :]
+
+            # translate connector index to channel number
+            try:
+                egm_name_bip, egm_name_uni = self._translate_connector_index(
+                    channel_list,
+                    electrode_idx,
+                    filename
+                )
+                # if no error, update minimum distance and file
+                min_dist = dist[idx_closest]
+            except IndexError:
+                # channel indexing does not match used connector, sometimes
+                # channels are missing in position on annotation file
+
+                if '_OnAnnotation' not in filename:
+                    # already working on extended files
+                    log.debug('unable to get channel name from extended '
+                              'position file {}'.format(filename))
+                    break
+
+                log.warning('channel indexing does not match connector! '
+                            'Trying to find in extensive position file(s)')
+
+                # get filename of extended position file
+                ext_filename = filename.replace('_OnAnnotation', '')
+                egm_name_bip, egm_name_uni, xyz_2 = (
+                    self._find_electrode_at_pos(self.recX,
+                                                [ext_filename],
+                                                encoding=encoding)
+                )
+
+        if not egm_name_bip or not any(egm_name_uni):
+            log.warning('unable to find which electrode recorded '
+                        'point {} at {}!'
+                        .format(self.name, point_xyz))
+            return ('',
+                    ['', ''],
+                    np.full(3, np.nan, dtype=np.float32)
+                    )
+
+        return egm_name_bip, egm_name_uni, xyz_2
+
+    @staticmethod
+    def _translate_connector_index(channel_list, electrode_index, filename):
+        """
+        Translate connector index in electrode position file to channel name
+        in ecg file.
+
+        Raises:
+            IndexError : If channel indexing does not match a known connector.
+
+        Returns:
+             egm_name_bip : string
+                name of the bipolar channel
+            egm_name_uni : list of string
+                names of the unipolar channels
+
+        """
+
+        egm_name_bip = ''
+        egm_name_uni = ['', '']
+
+        LASSO_INDEXING = [1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+                          1, 2, 3, 4]
+        PENTA_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                          14, 15, 16, 17, 18, 19, 20, 21, 22]
+        # TODO: implement correct indexing for CS catheter
+        CS_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+        # now we have to translate the filename into the egm name that gives us
+        # the correct egm in the ECG_Export file.
+        identifier = ['CS_CONNECTOR',
+                      'MAGNETIC_20_POLE_A_CONNECTOR',
+                      'MAGNETIC_20_POLE_B_CONNECTOR',
+                      'NAVISTAR_CONNECTOR',
+                      'MEC']
+        translation = ['CS',
+                       '20A_',
+                       '20B_',
+                       'M',
+                       'MCC Abl BiPolar']
+
+        idx_identifier = [identifier.index(x) for x in identifier
+                          if x in filename][0]
+        egm_name = translation[idx_identifier]
+
+        if egm_name == 'MCC Abl BiPolar':
+            electrode_number = channel_list[electrode_index]
+            egm_name_bip = egm_name + ' {}'.format(electrode_number)
+            egm_name_uni[0] = 'M{}'.format(electrode_number)
+            # TODO: what is the second unipolar channel for this?
+            egm_name_uni[1] = egm_name_uni[0]
+
+        elif egm_name == '20A_' or egm_name == '20B_':
+            # check which catheter was used
+            if np.array_equal(channel_list, LASSO_INDEXING):
+                # two electrodes offset and 1-based numbering
+                electrode_number = electrode_index - 2 + 1
+            elif np.array_equal(channel_list, PENTA_INDEXING):
+                electrode_number = channel_list[electrode_index]
+            else:
+                raise IndexError('channel indexing does not match specified '
+                                 'connector!')
+
+            # build channel name
+            egm_name_bip = '{}{}-{}'.format(egm_name,
+                                            electrode_number,
+                                            electrode_number + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
+            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
+            # TODO: why is this done??
+            if egm_name_bip == '20B_7-8':
+                egm_name_bip = '20B_9-8'
+
+        else:
+            log.warning('unknown connector! Trying best guess for channel '
+                        'name!')
+            electrode_number = channel_list[electrode_index]
+            egm_name_bip = '{}{}-{}{}'.format(egm_name,
+                                              electrode_number,
+                                              egm_name,
+                                              electrode_number + 1)
+            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
+            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
+
+        return egm_name_bip, egm_name_uni
+
+
+class CartoMap(EPMap):
+    """
+    Class representing Carto3 map.
+
+    Attributes:
+        name : str
+            name of the mapping procedure
+        studyXML : str
+            filename of the study's XML file (same as in parent)
+        parent : subclass of EPStudy
+            the parent study for this map
+        index : int
+            index of the map assigned by the Carto system
+        visible : str
+            boolean string ('true' or 'false') if map was visible in Carto
+        type : str
+            type of the map
+        volume : float
+            volume of the mesh, calculated by Carto
+        RefAnnotationConfig : RefAnnotationConfig object
+            algorithm and connector used as reference
+        coloringRangeTable : list of ColoringRange
+            color ranges used by Carto
+        surfaceFile : str
+            filename of file containing the anatomical shell data
+        surface : Surface
+            triangulated anatomical shell
+        points : list of subclass EPPoints
+            the mapping points recorded during mapping procedure
+        bsecg : list of BodySurfaceECG
+            body surface ECG data for the mapping procedure
+        lesions : list of Lesion
+            ablation data for this mapping procedure
+        rf : MapRF object
+            force and ablation data of the mapping procedure
+
+    Methods:
+        load_mesh()
+            load triangulated anatomical shell
+        load_points(study_tags=None, egm_names_from_pos=False)
+            load EGM points
+        import_lesions(directory=None)
+            import lesion data for this mapping procedure (for consistency
+            only)
+        get_map_ecg(ecg_names=None, method=None)
+            build representative body surface ECGs
+        export_point_ecg(basename='', which=None, points=None)
+            export ECG data for points in IGB format
+        import_rf_data()
+            import RF and force data
+        visitag_to_lesion(visitag_sites)
+            convert VisiTag ablation sites to BaseClass Lesion
+
+    """
+
+    def __init__(self, name, study_xml, parent=None):
+        """
+        Constructor.
+
+        Parameters:
+            name : str
+                name of the mapping procedure
+            study_xml : str
+                name of the study's XML file (same as in parent)
+            parent : CartoStudy (optional)
+                study this map belongs to
+
+        Returns:
+            None
+
+        """
+
+        super().__init__(name, parent=parent)
+
+        # add Carto3 specific attributes
+        self.studyXML = study_xml
+        self.index = np.nan
+        self.visible = None
+        self.type = None
+        self.volume = np.nan
+        self.RefAnnotationConfig = None
+        self.coloringRangeTable = []
+        self.rf = None
+
+    def import_map(self, egm_names_from_pos=False):
+        """
+        Load all relevant information for this mapping procedure, import EGM
+        recording points, interpolate standard surface parameter maps from
+        point data (bip voltage, uni voltage, LAT), and build representative
+        body surface ECGs.
+
+        Parameters:
+            egm_names_from_pos : boolean (optional)
+                get names of egm traces from electrode positions
+
+        Raises:
+            MapAttributeError : If unable to retrieve map attributes from XML
+            MeshFileNotFoundError: If mesh file is not found in repository
+
+        Returns:
+            None
+
+        """
+
+        self._import_attributes()
+        self.surface = self.load_mesh()
+
+        # check if parent study was imported or loaded
+        # if it was loaded, some attributes are missing
+        if not self.parent.mappingParams:
+            log.info('study was probably loaded from file, need to re-import '
+                     'basic study information')
+            self.parent.import_study()
+
+        # load points
+        self.points = self.load_points(
+            study_tags=self.parent.mappingParams.TagsTable,
+            egm_names_from_pos=egm_names_from_pos)
+
+        # build surface maps
+        self.interpolate_data('lat')
+        self.interpolate_data('bip')
+        self.interpolate_data('uni')
+        self.interpolate_data('imp')
+        self.interpolate_data('frc')
+
+        # build map BSECGs
+        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
+
+    def load_mesh(self):
+        """
+        Load a Carto3 triangulated anatomical shell from file. Overrides
+        BaseClass method.
+
+        Raises:
+            MeshFileNotFoundError : if mesh file not found
+
+        Returns:
+            Surface object
+
+        """
+
+        log.info('reading Carto3 mesh {}'.format(self.surfaceFile))
+
+        mesh_file = self.parent.repository.join(self.surfaceFile)
+        if not self.parent.repository.is_file(mesh_file):
+            raise MeshFileNotFoundError(filename=self.surfaceFile)
+
+        with self.parent.repository.open(mesh_file, mode='rb') as fid:
+            return read_mesh_file(fid, encoding=self.parent.encoding)
+
+    def load_points(self, study_tags=None, egm_names_from_pos=False):
+        """
+        Load points for Carto3 map. Overrides BaseClass method.
+
+        EGM names for recording points can be identified by evaluating the
+        recording position to get the name of the electrode and comparing it
+        to the name found in the points ECG file. Otherwise, the EGM name
+        stored in a points ECG file is used.
+
+        Parameters:
+            study_tags : list of Tag objects
+                to transform tag ID to label
+            egm_names_from_pos : boolean (optional)
+                Get EGM names from recording positions. (default is False)
+
+        Returns:
+            list of CartoPoints objects
+
+        """
+
+        log.info('import EGM points')
+
+        if not study_tags:
+            log.warning('no tag names provided for study {}: cannot '
+                        'convert tag ID to tag name'.format(self.name))
+
+        points = []
+
+        xml_file = self.parent.repository.join(self.studyXML)
+        with self.parent.repository.open(xml_file, mode='rb') as fid:
+            root = ET.parse(fid).getroot()
+
+        map_item = [x for x in root.find('Maps').findall('Map')
+                    if x.get('Name') == self.name]
+        if not map_item:
+            log.warning('no map with name {} found in study XML'
+                        .format(self.name))
+            return -1
+        if len(map_item) > 1:
+            log.warning('multiple maps with name {} found in study XML'
+                        .format(self.name))
+            return -1
+        map_item = map_item[0]
+
+        all_points_file = self.parent.repository.join(
+            self.name + '_Points_Export.xml'
+        )
+        if not self.parent.repository.is_file(all_points_file):
+            log.warning('unable to find export overview of all points {}'
+                        .format(all_points_file))
+            return -1
+
+        with self.parent.repository.open(all_points_file, mode='rb') as fid:
+            root = ET.parse(fid).getroot()
+
+        if not root.get('Map_Name') == self.name:
+            log.warning('map name {} in export file {} does not match map '
+                        'name {} for import'
+                        .format(root.get('Map_Name'),
+                                self.name,
+                                all_points_file)
+                        )
+            return -1
+        point_files = {}
+        for i, point in enumerate(root.findall('Point')):
+            point_files[point.get('ID')] = point.get('File_Name')
+
+        # TODO: read field "Anatomical_Tags"
+
+        # get points in this map from study XML
+        n_points = int(map_item.find('CartoPoints').get('Count'))
+        if not len(point_files) == n_points:
+            log.warning('number of points is not equal number of points files')
+            return -1
+
+        log.info('loading {} points'.format(n_points))
+        for i, point in enumerate(
+                map_item.find('CartoPoints').findall('Point')):
+
+            point_name = 'P' + point.get('Id')
+            # update progress bar
+            console_progressbar(
+                i+1, n_points,
+                suffix='Loading point {}'.format(point_name)
+            )
+
+            xyz = np.array(point.get('Position3D').split()).astype(np.float32)
+
+            # get tags for this point
+            tag_names = []
+            tags = point.find('Tags')
+            if tags is not None and study_tags:
+                n_tags = int(point.find('Tags').get('Count'))
+                tag_ids = [int(x) for x in point.find('Tags').text.split()]
+                if len(tag_ids) != n_tags:
+                    log.warning('number of tags does not match number of '
+                                'tag IDs for point {}'
+                                .format(point_name))
+                else:
+                    tag_names = [x.FullName for x in study_tags
+                                 for tid in tag_ids
+                                 if int(x.ID) == tid]
+
+            # get files associated with this point
+            try:
+                point_file = point_files[point.get('Id')]
+            except KeyError:
+                log.info('No Point Export file found for point {}'
+                         .format(point_name))
+                point_file = None
+
+            log.debug('adding point {} to map {}'.format(point_name,
+                                                         self.name))
+            new_point = CartoPoint(point_name,
+                                   coordinates=xyz,
+                                   tags=tag_names,
+                                   parent=self)
+            new_point.import_point(point_file,
+                                   egm_names_from_pos=egm_names_from_pos
+                                   )
+            points.append(new_point)
+
+        return points
+
+    def import_lesions(self, directory=None):
+        """
+        Import VisiTag lesion data.
+
+        Note: More than one RF index can be stored per ablation site.
+
+        Parameters:
+            directory : str
+                path to VisiTag data. If None, standard location
+                ../<studyRepository>/VisiTagExport is used
+
+        Returns:
+            None
+
+        """
+
+        # VisiTag data is stored study-wise, so check parent for data.
+        if not self.parent.visitag.sites:
+            self.parent.import_visitag_sites(directory=directory)
+
+        # check if lesion data was loaded
+        if not self.parent.visitag.sites:
+            log.info('no VisiTag data found in study')
+            return
+
+        self.lesions = self.parent.visitag.to_lesions()
+
+    def build_map_ecg(self, ecg_names=None,
+                      method=None,
+                      reload_data=False,
+                      *args, **kwargs):
+        """Get a mean surface ECG trace.
+
+        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
+
+        CARTO points are recorded sequentially. Therefore, ECG traces
+        recorded at each point (i.e. at a time during procedure) vary. This
+        function calculates a representative ECG.
+
+        Building ECG traces with multiple method is most efficient when
+        specifying the methods in a single call, since data has to be read
+        only once.
+
+        Parameters:
+            ecg_names : list of str
+                ECG names to build. If not specified, 12-lead ECG is used
+            method : str, list of str (optional)
+                Method to use. Options are ['median', 'ccf', 'mse']
+                'median': time-wise median value of all ECGs
+                'ccf': recorded ECG with highest cross-correlation to mean ecg
+                'mse': recorded ECG with lowest MSE to mean ecg
+                If not specified, all methods are used
+            reload_data : bool
+                reload ECG data or use if already loaded before
+
+        Returns
+            list of BodySurfaceECG
+
+        """
+
+        if not ecg_names:
+            ecg_names = ['I', 'II', 'III',
+                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                         'aVL', 'aVR', 'aVF'
+                         ]
+        elif isinstance(ecg_names, str):
+            ecg_names = [ecg_names]
+
+        if not method:
+            method = ['median', 'mse', 'ccf']
+
+        log.info('map {}: building representative ECGs: {}'
+                 .format(self.name, ecg_names))
+
+        points = self.get_valid_points()
+        if not points:
+            log.info('no points found in WOI or no points in map, aborting...')
+            return []
+
+        log.debug('found {} points in WOI'.format(len(points)))
+
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(ecg_names) for p in points]
+
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
+            return []
+
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
+
+                point.ecg.extend(point.load_ecg(ecg_names, reload=reload_data))
+
+        # data is available now, begin build
+        data = np.full((len(points), 2500, len(ecg_names)),
+                       np.nan,
+                       dtype=np.float32)
+        ref = points[0].refAnnotation
+        woi = points[0].woi
+
+        # get ECG traces for each mapping point
+        for i, point in enumerate(points):
+            # update progress bar
+            console_progressbar(
+                i+1, len(points),
+                suffix='Processing ECG(s) for point {}'.format(point.name)
+            )
+
+            # append point ECG data
+            point_data = np.array(
+                [t.data for t in point.ecg
+                 for chn in ecg_names if t.name == chn]
+            )
+            data[i, :, :] = point_data.T
+
+            # check WOI and RefAnnotation
+            if not point.woi[0] == woi[0] or not point.woi[1] == woi[1]:
+                log.warning('WOI changed in point {}'.format(point.name))
+                # make this WOI the new one
+                woi = point.woi
+            if not point.refAnnotation == ref:
+                log.warning('REF annotation changed in point {}'
+                            .format(point.name))
+                # make this the new ref
+                ref = point.refAnnotation
+
+        # build representative bsecg trace
+        if isinstance(method, str):
+            method = [method]
+        repr_ecg = []
+
+        for meth in method:
+            if meth.lower() == 'median':
+                ecg = np.median(data, axis=0)
+            elif meth.lower() == 'mse':
+                mean_ecg = np.median(data, axis=0)
+                # get WOI indices
+                idx_start = ref + woi[0]
+                idx_end = ref + woi[1]
+                idx_match = np.full((mean_ecg.shape[1], 2),
+                                    np.iinfo(int).min,
+                                    dtype=int
+                                    )
+                for i in range(mean_ecg.shape[1]):
+                    mse = (np.square(data[:, idx_start:idx_end, i]
+                                     - mean_ecg[idx_start:idx_end, i])
+                           ).mean(axis=1)
+                    idx_match[i, :] = [np.argmin(mse).astype(int), i]
+                ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
+                ecg = ecg.T
+            elif meth.lower() == 'ccf':
+                # compare mean, median might result in all zeroes when WOI
+                # is outside QRS
+                mean_ecg = np.mean(data, axis=0)
+                # get WOI indices
+                idx_start = ref + woi[0]
+                idx_end = ref + woi[1]
+                # compute cross-correlation and select best match
+                idx_match = np.full((mean_ecg.shape[1], 2),
+                                    np.iinfo(int).min,
+                                    dtype=int
+                                    )
+                corr = np.full(data.shape[0], np.nan, dtype=float)
+                for i in range(mean_ecg.shape[1]):
+                    for k in range(data.shape[0]):
+                        mean_ecg_norm = np.linalg.norm(mean_ecg[idx_start:idx_end, i])
+                        data_norm = np.linalg.norm(data[k, idx_start:idx_end, i])
+                        corr[k] = np.correlate(
+                            data[k, idx_start:idx_end, i] / data_norm,
+                            mean_ecg[idx_start:idx_end, i] / mean_ecg_norm
+                        )
+                    idx_match[i, :] = [np.argmax(corr).astype(int), i]
+                ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
+                ecg = ecg.T
+            else:
+                raise KeyError
+
+            # build ECG traces
+            traces = []
+            for i, name in enumerate(ecg_names):
+                traces.append(Trace(name=name, data=ecg[:, i], fs=1000.0))
+            repr_ecg.append(BodySurfaceECG(method=meth,
+                                           refAnnotation=ref,
+                                           traces=traces))
+
+        return repr_ecg
+
+    def export_point_info(
+            self,
+            output_folder: str = '',
+            points: Optional[List[CartoPoint]] = None
+    ) -> None:
+        """
+        Export additional recording point info in DAT format.
+
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        Following data can is exported:
+            NAME : point identifier
+            REF : reference annotation
+            WOI_START : window of interest, relative to REF
+            WOI_END : window of interest, relative to REF
+
+        By default, data from all valid points is exported, but also a
+        list of EPPoints to use can be given.
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ptdata.<parameter>.pc.dat
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+           points : list of CartoPoints (optional)
+                EGM points to export
+
+        Returns:
+            None
+        """
+
+        log.info('exporting additional EGM point data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        # export point cloud first
+        self.export_point_cloud(points=points, output_folder=output_folder)
+
+        output_folder = self.resolve_export_folder(output_folder)
+        basename = os.path.join(output_folder, self.name)
+
+        # export data
+        writer = FileWriter()
+
+        data = [point.name for point in points]
+        dat_file = basename + '.ptdata.NAME.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point names to {}'.format(dat_file))
+
+        data = [point.refAnnotation for point in points]
+        dat_file = basename + '.ptdata.REF.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point reference annotation to {}'.format(dat_file))
+
+        data = [point.woi[0] for point in points]
+        dat_file = basename + '.ptdata.WOI_START.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point WOI (start) to {}'.format(dat_file))
+        data = [point.woi[1] for point in points]
+        dat_file = basename + '.ptdata.WOI_END.pc.dat'
+        writer.dump(dat_file, data)
+        log.info('exported point WOI (end) to {}'.format(dat_file))
+
+        return
+
+    def export_point_ecg(
+            self,
+            output_folder: str = '',
+            which: Optional[Union[str, List[str]]] = None,
+            points: Optional[List[CartoPoint]] = None,
+            reload_data: bool = False
+    ) -> None:
+        """
+        Export surface ECG traces in IGB format. Overrides BaseClass method.
+
+        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
+
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        By default, ECGs for all valid points are exported, but also a
+        list of EPPoints to use can be given.
+
+        If no ECG names are specified, 12-lead ECGs are exported
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ecg.<trace>.pc.igb
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+            which : string or list of strings
+                ECG name(s) to include in IGB file.
+            points : list of CartoPoints (optional)
+                EGM points to export
+            reload_data : bool
+                reload ECG data if already loaded
+
+        Returns:
+            None
+        """
+
+        log.debug('preparing exporting point ECG data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        if not which:
+            which = ['I', 'II', 'III',
+                     'aVR', 'aVL', 'aVF',
+                     'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+        if isinstance(which, str):
+            which = [which]
+
+        # check if data is required
+        missing_data = [p.is_ecg_data_required(which) for p in points]
+
+        if any(missing_data) and not self.parent.is_root_valid():
+            log.warning('valid study root is required to load ECG data!')
+            return
+
+        if any(missing_data):
+            log.info('missing ECG data, loading...')
+            missing_points = list(compress(points, missing_data))
+            for i, point in enumerate(missing_points):
+                # update progress bar
+                console_progressbar(
+                    i + 1, len(missing_points),
+                    suffix='Loading ECG(s) for point {}'.format(point.name)
+                )
+
+                point.ecg.extend(point.load_ecg(which, reload=reload_data))
+
+        # everything was imported, ready to save
+        super().export_point_ecg(output_folder=output_folder,
+                                 which=which,
+                                 points=points)
+
+        return
+
+    def import_rf_data(self):
+        """Load map associated RF data and RF contact forces."""
+
+        log.info('loading RF and RF contact force data for map {}'
+                 .format(self.name))
+
+        # read RF data
+        rf_abl = RFAblationParameters()
+        rf_files = self.parent.repository.list_dir(
+            self.parent.repository.join(''),
+            regex='RF_' + self.name + '*'
+        )
+
+        if rf_files:
+            rf_files = CartoMap._sort_rf_filenames(rf_files)
+            rf_files = [self.parent.repository.join(f) for f in rf_files]
+            log.debug('found {} RF files'.format(len(rf_files)))
+
+            rf_columns = []
+            rf_data = np.array([])
+            for file in rf_files:
+                with self.parent.repository.open(file, mode='rb') as f:
+                    header = f.readline().decode(encoding=self.parent.encoding)
+                    header = re.split(r'\t+', header.rstrip('\t\r\n'))
+                    if not rf_columns:
+                        # this is the first file
+                        rf_columns = header
+                        log.debug('found RF columns: {}'.format(rf_columns))
+                        rf_data = np.empty((0, len(rf_columns)), dtype=np.int32)
+                    if not header == rf_columns:
+                        log.info('RF file header changed in file {}'
+                                 .format(file))
+                        continue
+
+                    data = np.loadtxt(f, dtype=np.int32, skiprows=0)
+
+                try:
+                    data.shape[1]
+                except IndexError:
+                    # only 1 row of data in file
+                    data = np.expand_dims(data, axis=0)
+
+                rf_data = np.append(rf_data,
+                                    data,
+                                    axis=0)
+
+            log.debug('read {} lines of RF data'.format(rf_data.shape[0]))
+            if rf_data.size > 0:
+                rf_abl = RFAblationParameters(time=rf_data[:, 0],
+                                              irrigation=rf_data[:, 1],
+                                              power_mode=rf_data[:, 2],
+                                              abl_time=rf_data[:, 3],
+                                              power=rf_data[:, 4],
+                                              impedance=rf_data[:, 5],
+                                              distal_temp=rf_data[:, 6],
+                                              proximal_temp=rf_data[:, 7],
+                                              )
+
+        # read contact force in RF
+        rf_force = RFForce()
+        contact_force_rf_files = self.parent.repository.list_dir(
+            self.parent.repository.join(''),
+            regex='ContactForceInRF_' + self.name + '*'
+        )
+
+        contact_f_in_rf_columns = []
+        contact_f_in_rf_data = np.array([])
+        if contact_force_rf_files:
+            contact_force_rf_files = CartoMap._sort_rf_filenames(
+                contact_force_rf_files)
+            contact_force_rf_files = [self.parent.repository.join(f)
+                                      for f in contact_force_rf_files]
+            log.debug('found {} RF contact force files'
+                      .format(len(contact_force_rf_files)))
+
+            # specify value converter for np.loadtxt that handles "," or "."
+            conv = {
+                1: lambda x: float(x.replace(',', '.'))
+            }
+
+            for file in contact_force_rf_files:
+                with self.parent.repository.open(file, mode='rb') as f:
+                    header = f.readline().decode(encoding=self.parent.encoding)
+                    header = re.split(r'\t+', header.rstrip('\t\r\n'))
+                    if not contact_f_in_rf_columns:
+                        # this is the first file
+                        contact_f_in_rf_columns = header
+                        log.debug('found RF contact force columns: {}'
+                                  .format(contact_f_in_rf_columns))
+                        contact_f_in_rf_data = np.empty(
+                            (0,
+                             len(contact_f_in_rf_columns)),
+                            dtype=np.int32
+                        )
+                    if not header == contact_f_in_rf_columns:
+                        log.info('RF contact force file header changed in '
+                                 'file {}'.format(file))
+                        continue
+
+                    data = np.loadtxt(f, skiprows=1, ndmin=2,
+                                      converters=conv, encoding=None)
+
+                contact_f_in_rf_data = np.append(contact_f_in_rf_data,
+                                                 data,
+                                                 axis=0)
+            log.debug('read {} lines of RF contact force data'
+                      .format(contact_f_in_rf_data.shape[0]))
+
+        if contact_f_in_rf_data.size > 0:
+            rf_force = RFForce(
+                time=contact_f_in_rf_data[:, 0].astype(np.int32),
+                force=contact_f_in_rf_data[:, 1].astype(np.float32),
+                axial_angle=contact_f_in_rf_data[:, 2].astype(np.float32),
+                lateral_angle=contact_f_in_rf_data[:, 3].astype(np.float32),
+                abl_point=np.full(contact_f_in_rf_data.shape[0],
+                                  -1,
+                                  dtype=np.int32
+                                  ),
+                position=np.full((contact_f_in_rf_data.shape[0], 3),
+                                 np.nan,
+                                 dtype=np.float32
+                                 )
+            )
+
+        # update rf data with point force data
+        if self.points:
+            log.info('updating RF dataset with EGM coordinates')
+            for point in self.points:
+                # add indices to the parent maps RF datasets referring back to
+                # the ID and egmSurfX of this point
+                if 'Ablation' in point.tags:
+                    # this is an ablation point
+                    point_id = int(point.name[1:])
+                    point_coord = point.prjX
+
+                    idx_min = np.argmin(np.abs(point.forceData.time))
+                    acq_time = point.forceData.systemTime[idx_min]
+
+                    sys_time = rf_force.time
+                    idx_min = np.argmin(np.abs(sys_time - acq_time))
+                    rf_force.ablationPoint[idx_min] = point_id
+                    rf_force.position[idx_min, :] = point_coord
+        else:
+            log.info('no points found in map, cannot update RF dataset with '
+                     'EGM coordinates!')
+
+        return MapRF(force=rf_force, ablation_parameters=rf_abl)
+
+    def _import_attributes(self):
+        """
+        Load info and file(s) associated with this map from study XML.
+
+        Returns:
+            None
+
+        """
+
+        xml_file = self.parent.repository.join(self.studyXML)
+        with self.parent.repository.open(xml_file) as fid:
+            root = ET.parse(fid).getroot()
+
+        map_item = [x for x in root.find('Maps').findall('Map')
+                    if x.get('Name') == self.name]
+        if not map_item:
+            raise MapAttributeError('no map with name {} found in study XML'
+                                    .format(self.name))
+        if len(map_item) > 1:
+            raise MapAttributeError('multiple maps with name {} found in '
+                                    'study XML'
+                                    .format(self.name))
+        map_item = map_item[0]
+
+        log.debug('reading map attributes')
+
+        self.index = int(map_item.get('Index'))
+        self.visible = map_item.get('Visible')
+        self.type = map_item.get('Type')
+        num_files = int(map_item.get('NumFiles'))
+        if num_files == 0:
+            raise MapAttributeError('no mesh file specified for map {}'
+                                    .format(self.name))
+
+        filenames = map_item.get('FileNames')
+        if num_files > 1 or not filenames.lower().endswith('.mesh'):
+            # TODO: handle filenames if more than one file
+            raise MapAttributeError('Mesh file for map {} cannot be extracted '
+                                    'from study XML'
+                                    .format(self.name))
+        self.surfaceFile = filenames
+        self.volume = float(map_item.get('Volume'))
+        self.RefAnnotationConfig = RefAnnotationConfig(
+            algorithm=int(
+                map_item.find('RefAnnotationConfig').get('Algorithm')
+            ),
+            connector=int(
+                map_item.find('RefAnnotationConfig').get('Connector')
+            )
+        )
+
+        # get map coloring range table
+        colorRangeItem = map_item.find('ColoringRangeTable')
+        colorRangeTable = []
+        for colorRange in colorRangeItem.findall('ColoringRange'):
+            colorRangeTable.append(
+                ColoringRange(Id=int(colorRange.get('Id')),
+                              min=float(colorRange.get('Min')),
+                              max=float(colorRange.get('Max'))
+                              )
+            )
+        self.coloringRangeTable = colorRangeTable
+
+        return True
+
+    @staticmethod
+    def _sort_rf_filenames(filenames, order='ascending'):
+        """Sort a list of filenames."""
+
+        names = [x.lower() for x in filenames]
+        idx_sorted = np.arange(len(filenames))
+
+        # determine the kind of files
+        if any(names[0].startswith(x) for x in ['contactforceinrf_', 'rf_']):
+            num_list = [int(re.sub(r'[^0-9]*', "", name.split('_')[-1]))
+                        for name in names]
+            idx_sorted = np.argsort(num_list)
+
+        if order.lower() == 'descending':
+            idx_sorted = np.flip(idx_sorted)
+
+        return [filenames[i] for i in idx_sorted]
 
 
 class CartoStudy(EPStudy):
@@ -1091,7 +2713,10 @@ class CartoStudy(EPStudy):
         log.info('saved study to {}'.format(filepath))
         return filepath
 
-    def export_additional_meshes(self, filename=''):
+    def export_additional_meshes(
+            self,
+            output_folder: str = ''
+    ) -> None:
         """
         Export additional meshes and registration matrix in study to VTK.
         Overrides BaseClass method.
@@ -1111,7 +2736,7 @@ class CartoStudy(EPStudy):
         the study_root.
 
         Parameters:
-            filename : str (optional)
+            output_folder : str (optional)
                 path to export file, export to default location if not given
 
         Returns:
@@ -1127,10 +2752,9 @@ class CartoStudy(EPStudy):
             log.info('no additional meshes found in study, nothing to export')
             return
 
-        if not filename:
-            basename = self.build_export_basename('additionalMeshes')
-        else:
-            basename = os.path.abspath(filename)
+        basename = self.resolve_export_folder(
+            os.path.join(output_folder, 'additionalMeshes')
+        )
 
         # export registration matrix
         log.debug('exporting registration matrix')
@@ -1356,1620 +2980,3 @@ class CartoStudy(EPStudy):
 
         # XML was nowhere to be found
         return None
-
-
-class CartoMap(EPMap):
-    """
-    Class representing Carto3 map.
-
-    Attributes:
-        name : str
-            name of the mapping procedure
-        studyXML : str
-            filename of the study's XML file (same as in parent)
-        parent : subclass of EPStudy
-            the parent study for this map
-        index : int
-            index of the map assigned by the Carto system
-        visible : str
-            boolean string ('true' or 'false') if map was visible in Carto
-        type : str
-            type of the map
-        volume : float
-            volume of the mesh, calculated by Carto
-        RefAnnotationConfig : RefAnnotationConfig object
-            algorithm and connector used as reference
-        coloringRangeTable : list of ColoringRange
-            color ranges used by Carto
-        surfaceFile : str
-            filename of file containing the anatomical shell data
-        surface : Surface
-            triangulated anatomical shell
-        points : list of subclass EPPoints
-            the mapping points recorded during mapping procedure
-        bsecg : list of BodySurfaceECG
-            body surface ECG data for the mapping procedure
-        lesions : list of Lesion
-            ablation data for this mapping procedure
-        rf : MapRF object
-            force and ablation data of the mapping procedure
-
-    Methods:
-        load_mesh()
-            load triangulated anatomical shell
-        load_points(study_tags=None, egm_names_from_pos=False)
-            load EGM points
-        import_lesions(directory=None)
-            import lesion data for this mapping procedure (for consistency
-            only)
-        get_map_ecg(ecg_names=None, method=None)
-            build representative body surface ECGs
-        export_point_ecg(basename='', which=None, points=None)
-            export ECG data for points in IGB format
-        import_rf_data()
-            import RF and force data
-        visitag_to_lesion(visitag_sites)
-            convert VisiTag ablation sites to BaseClass Lesion
-
-    """
-
-    def __init__(self, name, study_xml, parent=None):
-        """
-        Constructor.
-
-        Parameters:
-            name : str
-                name of the mapping procedure
-            study_xml : str
-                name of the study's XML file (same as in parent)
-            parent : CartoStudy (optional)
-                study this map belongs to
-
-        Returns:
-            None
-
-        """
-
-        super().__init__(name, parent=parent)
-
-        # add Carto3 specific attributes
-        self.studyXML = study_xml
-        self.index = np.nan
-        self.visible = None
-        self.type = None
-        self.volume = np.nan
-        self.RefAnnotationConfig = None
-        self.coloringRangeTable = []
-        self.rf = None
-
-    def import_map(self, egm_names_from_pos=False):
-        """
-        Load all relevant information for this mapping procedure, import EGM
-        recording points, interpolate standard surface parameter maps from
-        point data (bip voltage, uni voltage, LAT), and build representative
-        body surface ECGs.
-
-        Parameters:
-            egm_names_from_pos : boolean (optional)
-                get names of egm traces from electrode positions
-
-        Raises:
-            MapAttributeError : If unable to retrieve map attributes from XML
-            MeshFileNotFoundError: If mesh file is not found in repository
-
-        Returns:
-            None
-
-        """
-
-        self._import_attributes()
-        self.surface = self.load_mesh()
-
-        # check if parent study was imported or loaded
-        # if it was loaded, some attributes are missing
-        if not self.parent.mappingParams:
-            log.info('study was probably loaded from file, need to re-import '
-                     'basic study information')
-            self.parent.import_study()
-
-        # load points
-        self.points = self.load_points(
-            study_tags=self.parent.mappingParams.TagsTable,
-            egm_names_from_pos=egm_names_from_pos)
-
-        # build surface maps
-        self.interpolate_data('lat')
-        self.interpolate_data('bip')
-        self.interpolate_data('uni')
-        self.interpolate_data('imp')
-        self.interpolate_data('frc')
-
-        # build map BSECGs
-        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
-
-    def load_mesh(self):
-        """
-        Load a Carto3 triangulated anatomical shell from file. Overrides
-        BaseClass method.
-
-        Raises:
-            MeshFileNotFoundError : if mesh file not found
-
-        Returns:
-            Surface object
-
-        """
-
-        log.info('reading Carto3 mesh {}'.format(self.surfaceFile))
-
-        mesh_file = self.parent.repository.join(self.surfaceFile)
-        if not self.parent.repository.is_file(mesh_file):
-            raise MeshFileNotFoundError(filename=self.surfaceFile)
-
-        with self.parent.repository.open(mesh_file, mode='rb') as fid:
-            return read_mesh_file(fid, encoding=self.parent.encoding)
-
-    def load_points(self, study_tags=None, egm_names_from_pos=False):
-        """
-        Load points for Carto3 map. Overrides BaseClass method.
-
-        EGM names for recording points can be identified by evaluating the
-        recording position to get the name of the electrode and comparing it
-        to the name found in the points ECG file. Otherwise, the EGM name
-        stored in a points ECG file is used.
-
-        Parameters:
-            study_tags : list of Tag objects
-                to transform tag ID to label
-            egm_names_from_pos : boolean (optional)
-                Get EGM names from recording positions. (default is False)
-
-        Returns:
-            list of CartoPoints objects
-
-        """
-
-        log.info('import EGM points')
-
-        if not study_tags:
-            log.warning('no tag names provided for study {}: cannot '
-                        'convert tag ID to tag name'.format(self.name))
-
-        points = []
-
-        xml_file = self.parent.repository.join(self.studyXML)
-        with self.parent.repository.open(xml_file, mode='rb') as fid:
-            root = ET.parse(fid).getroot()
-
-        map_item = [x for x in root.find('Maps').findall('Map')
-                    if x.get('Name') == self.name]
-        if not map_item:
-            log.warning('no map with name {} found in study XML'
-                        .format(self.name))
-            return -1
-        if len(map_item) > 1:
-            log.warning('multiple maps with name {} found in study XML'
-                        .format(self.name))
-            return -1
-        map_item = map_item[0]
-
-        all_points_file = self.parent.repository.join(
-            self.name + '_Points_Export.xml'
-        )
-        if not self.parent.repository.is_file(all_points_file):
-            log.warning('unable to find export overview of all points {}'
-                        .format(all_points_file))
-            return -1
-
-        with self.parent.repository.open(all_points_file, mode='rb') as fid:
-            root = ET.parse(fid).getroot()
-
-        if not root.get('Map_Name') == self.name:
-            log.warning('map name {} in export file {} does not match map '
-                        'name {} for import'
-                        .format(root.get('Map_Name'),
-                                self.name,
-                                all_points_file)
-                        )
-            return -1
-        point_files = {}
-        for i, point in enumerate(root.findall('Point')):
-            point_files[point.get('ID')] = point.get('File_Name')
-
-        # TODO: read field "Anatomical_Tags"
-
-        # get points in this map from study XML
-        n_points = int(map_item.find('CartoPoints').get('Count'))
-        if not len(point_files) == n_points:
-            log.warning('number of points is not equal number of points files')
-            return -1
-
-        log.info('loading {} points'.format(n_points))
-        for i, point in enumerate(
-                map_item.find('CartoPoints').findall('Point')):
-
-            point_name = 'P' + point.get('Id')
-            # update progress bar
-            console_progressbar(
-                i+1, n_points,
-                suffix='Loading point {}'.format(point_name)
-            )
-
-            xyz = np.array(point.get('Position3D').split()).astype(np.float32)
-
-            # get tags for this point
-            tag_names = []
-            tags = point.find('Tags')
-            if tags is not None and study_tags:
-                n_tags = int(point.find('Tags').get('Count'))
-                tag_ids = [int(x) for x in point.find('Tags').text.split()]
-                if len(tag_ids) != n_tags:
-                    log.warning('number of tags does not match number of '
-                                'tag IDs for point {}'
-                                .format(point_name))
-                else:
-                    tag_names = [x.FullName for x in study_tags
-                                 for tid in tag_ids
-                                 if int(x.ID) == tid]
-
-            # get files associated with this point
-            try:
-                point_file = point_files[point.get('Id')]
-            except KeyError:
-                log.info('No Point Export file found for point {}'
-                         .format(point_name))
-                point_file = None
-
-            log.debug('adding point {} to map {}'.format(point_name,
-                                                         self.name))
-            new_point = CartoPoint(point_name,
-                                   coordinates=xyz,
-                                   tags=tag_names,
-                                   parent=self)
-            new_point.import_point(point_file,
-                                   egm_names_from_pos=egm_names_from_pos
-                                   )
-            points.append(new_point)
-
-        return points
-
-    def import_lesions(self, directory=None):
-        """
-        Import VisiTag lesion data.
-
-        Note: More than one RF index can be stored per ablation site.
-
-        Parameters:
-            directory : str
-                path to VisiTag data. If None, standard location
-                ../<studyRepository>/VisiTagExport is used
-
-        Returns:
-            None
-
-        """
-
-        # VisiTag data is stored study-wise, so check parent for data.
-        if not self.parent.visitag.sites:
-            self.parent.import_visitag_sites(directory=directory)
-
-        # check if lesion data was loaded
-        if not self.parent.visitag.sites:
-            log.info('no VisiTag data found in study')
-            return
-
-        self.lesions = self.parent.visitag.to_lesions()
-
-    def build_map_ecg(self, ecg_names=None,
-                      method=None,
-                      reload_data=False,
-                      *args, **kwargs):
-        """Get a mean surface ECG trace.
-
-        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
-
-        CARTO points are recorded sequentially. Therefore, ECG traces
-        recorded at each point (i.e. at a time during procedure) vary. This
-        function calculates a representative ECG.
-
-        Building ECG traces with multiple method is most efficient when
-        specifying the methods in a single call, since data has to be read
-        only once.
-
-        Parameters:
-            ecg_names : list of str
-                ECG names to build. If not specified, 12-lead ECG is used
-            method : str, list of str (optional)
-                Method to use. Options are ['median', 'ccf', 'mse']
-                'median': time-wise median value of all ECGs
-                'ccf': recorded ECG with highest cross-correlation to mean ecg
-                'mse': recorded ECG with lowest MSE to mean ecg
-                If not specified, all methods are used
-            reload_data : bool
-                reload ECG data or use if already loaded before
-
-        Returns
-            list of BodySurfaceECG
-
-        """
-
-        if not ecg_names:
-            ecg_names = ['I', 'II', 'III',
-                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
-                         'aVL', 'aVR', 'aVF'
-                         ]
-        elif isinstance(ecg_names, str):
-            ecg_names = [ecg_names]
-
-        if not method:
-            method = ['median', 'mse', 'ccf']
-
-        log.info('map {}: building representative ECGs: {}'
-                 .format(self.name, ecg_names))
-
-        points = self.get_valid_points()
-        if not points:
-            log.info('no points found in WOI or no points in map, aborting...')
-            return []
-
-        log.debug('found {} points in WOI'.format(len(points)))
-
-        # check if data is required
-        missing_data = [p.is_ecg_data_required(ecg_names) for p in points]
-
-        if any(missing_data) and not self.parent.is_root_valid():
-            log.warning('valid study root is required to load ECG data!')
-            return []
-
-        if any(missing_data):
-            log.info('missing ECG data, loading...')
-            missing_points = list(compress(points, missing_data))
-            for i, point in enumerate(missing_points):
-                # update progress bar
-                console_progressbar(
-                    i + 1, len(missing_points),
-                    suffix='Loading ECG(s) for point {}'.format(point.name)
-                )
-
-                point.ecg.extend(point.load_ecg(ecg_names, reload=reload_data))
-
-        # data is available now, begin build
-        data = np.full((len(points), 2500, len(ecg_names)),
-                       np.nan,
-                       dtype=np.float32)
-        ref = points[0].refAnnotation
-        woi = points[0].woi
-
-        # get ECG traces for each mapping point
-        for i, point in enumerate(points):
-            # update progress bar
-            console_progressbar(
-                i+1, len(points),
-                suffix='Processing ECG(s) for point {}'.format(point.name)
-            )
-
-            # append point ECG data
-            point_data = np.array(
-                [t.data for t in point.ecg
-                 for chn in ecg_names if t.name == chn]
-            )
-            data[i, :, :] = point_data.T
-
-            # check WOI and RefAnnotation
-            if not point.woi[0] == woi[0] or not point.woi[1] == woi[1]:
-                log.warning('WOI changed in point {}'.format(point.name))
-                # make this WOI the new one
-                woi = point.woi
-            if not point.refAnnotation == ref:
-                log.warning('REF annotation changed in point {}'
-                            .format(point.name))
-                # make this the new ref
-                ref = point.refAnnotation
-
-        # build representative bsecg trace
-        if isinstance(method, str):
-            method = [method]
-        repr_ecg = []
-
-        for meth in method:
-            if meth.lower() == 'median':
-                ecg = np.median(data, axis=0)
-            elif meth.lower() == 'mse':
-                mean_ecg = np.median(data, axis=0)
-                # get WOI indices
-                idx_start = ref + woi[0]
-                idx_end = ref + woi[1]
-                idx_match = np.full((mean_ecg.shape[1], 2),
-                                    np.iinfo(int).min,
-                                    dtype=int
-                                    )
-                for i in range(mean_ecg.shape[1]):
-                    mse = (np.square(data[:, idx_start:idx_end, i]
-                                     - mean_ecg[idx_start:idx_end, i])
-                           ).mean(axis=1)
-                    idx_match[i, :] = [np.argmin(mse).astype(int), i]
-                ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
-                ecg = ecg.T
-            elif meth.lower() == 'ccf':
-                # compare mean, median might result in all zeroes when WOI
-                # is outside QRS
-                mean_ecg = np.mean(data, axis=0)
-                # get WOI indices
-                idx_start = ref + woi[0]
-                idx_end = ref + woi[1]
-                # compute cross-correlation and select best match
-                idx_match = np.full((mean_ecg.shape[1], 2),
-                                    np.iinfo(int).min,
-                                    dtype=int
-                                    )
-                corr = np.full(data.shape[0], np.nan, dtype=float)
-                for i in range(mean_ecg.shape[1]):
-                    for k in range(data.shape[0]):
-                        mean_ecg_norm = np.linalg.norm(mean_ecg[idx_start:idx_end, i])
-                        data_norm = np.linalg.norm(data[k, idx_start:idx_end, i])
-                        corr[k] = np.correlate(
-                            data[k, idx_start:idx_end, i] / data_norm,
-                            mean_ecg[idx_start:idx_end, i] / mean_ecg_norm
-                        )
-                    idx_match[i, :] = [np.argmax(corr).astype(int), i]
-                ecg = data[idx_match[:, 0], :, idx_match[:, 1]]
-                ecg = ecg.T
-            else:
-                raise KeyError
-
-            # build ECG traces
-            traces = []
-            for i, name in enumerate(ecg_names):
-                traces.append(Trace(name=name, data=ecg[:, i], fs=1000.0))
-            repr_ecg.append(BodySurfaceECG(method=meth,
-                                           refAnnotation=ref,
-                                           traces=traces))
-
-        return repr_ecg
-
-    def export_point_info(self, basename='', points=None):
-        """
-        Export additional recording point info in DAT format.
-
-        Files created are labeled ".pc." and can be associated with
-        recording location point cloud ".pc.pts" or with locations projected
-        onto the high-resolution mesh".ppc.pts".
-
-        Following data can is exported:
-            NAME : point identifier
-            REF : reference annotation
-            WOI_START : window of interest, relative to REF
-            WOI_END : window of interest, relative to REF
-
-        By default, data from all valid points is exported, but also a
-        list of EPPoints to use can be given.
-
-        If no basename is explicitly specified, the map's name is used and
-        files are saved to the directory above the study root.
-        Naming convention:
-            <basename>.ptdata.<parameter>.pc.dat
-
-        Parameters:
-            basename : string (optional)
-                path and filename of the exported files
-           points : list of CartoPoints (optional)
-                EGM points to export
-
-        Returns:
-            None
-        """
-
-        log.info('exporting additional EGM point data')
-
-        if not points:
-            points = self.get_valid_points()
-        if not len(points) > 0:
-            log.warning('no points found in map {}. Nothing to export...'
-                        .format(self.name))
-            return
-
-        if not basename:
-            basename = self.parent.build_export_basename(self.name)
-            basename = os.path.join(basename, self.name)
-
-        # export point files
-        self.export_point_cloud(points=points, basename=basename)
-
-        # export data
-        writer = FileWriter()
-
-        data = [point.name for point in points]
-        dat_file = basename + '.ptdata.NAME.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point names to {}'.format(dat_file))
-
-        data = [point.refAnnotation for point in points]
-        dat_file = basename + '.ptdata.REF.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point reference annotation to {}'.format(dat_file))
-
-        data = [point.woi[0] for point in points]
-        dat_file = basename + '.ptdata.WOI_START.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point WOI (start) to {}'.format(dat_file))
-        data = [point.woi[1] for point in points]
-        dat_file = basename + '.ptdata.WOI_END.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point WOI (end) to {}'.format(dat_file))
-
-        return
-
-    def export_point_ecg(self, basename='',
-                         which=None,
-                         points=None,
-                         reload_data=False):
-        """
-        Export surface ECG traces in IGB format. Overrides BaseClass method.
-
-        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
-
-        Files created are labeled ".pc." and can be associated with
-        recording location point cloud ".pc.pts" or with locations projected
-        onto the high-resolution mesh".ppc.pts".
-
-        By default, ECGs for all valid points are exported, but also a
-        list of EPPoints to use can be given.
-
-        If no ECG names are specified, 12-lead ECGs are exported
-
-        If no basename is explicitly specified, the map's name is used and
-        files are saved to the directory above the study root.
-        Naming convention:
-            <basename>.ecg.<trace>.pc.igb
-
-        Parameters:
-            basename : string (optional)
-                path and filename of the exported files
-            which : string or list of strings
-                ECG name(s) to include in IGB file.
-            points : list of CartoPoints (optional)
-                EGM points to export
-            reload_data : bool
-                reload ECG data if already loaded
-
-        Returns:
-            None
-        """
-
-        log.debug('preparing exporting point ECG data')
-
-        if not points:
-            points = self.get_valid_points()
-        if not len(points) > 0:
-            log.warning('no points found in map {}. Nothing to export...'
-                        .format(self.name))
-            return
-
-        if not basename:
-            basename = self.parent.build_export_basename(self.name)
-            basename = os.path.join(basename, self.name)
-
-        if not which:
-            which = ['I', 'II', 'III',
-                     'aVR', 'aVL', 'aVF',
-                     'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
-        if isinstance(which, str):
-            which = [which]
-
-        # check if data is required
-        missing_data = [p.is_ecg_data_required(which) for p in points]
-
-        if any(missing_data) and not self.parent.is_root_valid():
-            log.warning('valid study root is required to load ECG data!')
-            return
-
-        if any(missing_data):
-            log.info('missing ECG data, loading...')
-            missing_points = list(compress(points, missing_data))
-            for i, point in enumerate(missing_points):
-                # update progress bar
-                console_progressbar(
-                    i + 1, len(missing_points),
-                    suffix='Loading ECG(s) for point {}'.format(point.name)
-                )
-
-                point.ecg.extend(point.load_ecg(which, reload=reload_data))
-
-        # everything was imported, ready to save
-        super().export_point_ecg(basename=basename, which=which, points=points)
-
-        return
-
-    def import_rf_data(self):
-        """Load map associated RF data and RF contact forces."""
-
-        log.info('loading RF and RF contact force data for map {}'
-                 .format(self.name))
-
-        # read RF data
-        rf_abl = RFAblationParameters()
-        rf_files = self.parent.repository.list_dir(
-            self.parent.repository.join(''),
-            regex='RF_' + self.name + '*'
-        )
-
-        if rf_files:
-            rf_files = CartoMap._sort_rf_filenames(rf_files)
-            rf_files = [self.parent.repository.join(f) for f in rf_files]
-            log.debug('found {} RF files'.format(len(rf_files)))
-
-            rf_columns = []
-            rf_data = np.array([])
-            for file in rf_files:
-                with self.parent.repository.open(file, mode='rb') as f:
-                    header = f.readline().decode(encoding=self.parent.encoding)
-                    header = re.split(r'\t+', header.rstrip('\t\r\n'))
-                    if not rf_columns:
-                        # this is the first file
-                        rf_columns = header
-                        log.debug('found RF columns: {}'.format(rf_columns))
-                        rf_data = np.empty((0, len(rf_columns)), dtype=np.int32)
-                    if not header == rf_columns:
-                        log.info('RF file header changed in file {}'
-                                 .format(file))
-                        continue
-
-                    data = np.loadtxt(f, dtype=np.int32, skiprows=0)
-
-                try:
-                    data.shape[1]
-                except IndexError:
-                    # only 1 row of data in file
-                    data = np.expand_dims(data, axis=0)
-
-                rf_data = np.append(rf_data,
-                                    data,
-                                    axis=0)
-
-            log.debug('read {} lines of RF data'.format(rf_data.shape[0]))
-            if rf_data.size > 0:
-                rf_abl = RFAblationParameters(time=rf_data[:, 0],
-                                              irrigation=rf_data[:, 1],
-                                              power_mode=rf_data[:, 2],
-                                              abl_time=rf_data[:, 3],
-                                              power=rf_data[:, 4],
-                                              impedance=rf_data[:, 5],
-                                              distal_temp=rf_data[:, 6],
-                                              proximal_temp=rf_data[:, 7],
-                                              )
-
-        # read contact force in RF
-        rf_force = RFForce()
-        contact_force_rf_files = self.parent.repository.list_dir(
-            self.parent.repository.join(''),
-            regex='ContactForceInRF_' + self.name + '*'
-        )
-
-        contact_f_in_rf_columns = []
-        contact_f_in_rf_data = np.array([])
-        if contact_force_rf_files:
-            contact_force_rf_files = CartoMap._sort_rf_filenames(
-                contact_force_rf_files)
-            contact_force_rf_files = [self.parent.repository.join(f)
-                                      for f in contact_force_rf_files]
-            log.debug('found {} RF contact force files'
-                      .format(len(contact_force_rf_files)))
-
-            # specify value converter for np.loadtxt that handles "," or "."
-            conv = {
-                1: lambda x: float(x.replace(',', '.'))
-            }
-
-            for file in contact_force_rf_files:
-                with self.parent.repository.open(file, mode='rb') as f:
-                    header = f.readline().decode(encoding=self.parent.encoding)
-                    header = re.split(r'\t+', header.rstrip('\t\r\n'))
-                    if not contact_f_in_rf_columns:
-                        # this is the first file
-                        contact_f_in_rf_columns = header
-                        log.debug('found RF contact force columns: {}'
-                                  .format(contact_f_in_rf_columns))
-                        contact_f_in_rf_data = np.empty(
-                            (0,
-                             len(contact_f_in_rf_columns)),
-                            dtype=np.int32
-                        )
-                    if not header == contact_f_in_rf_columns:
-                        log.info('RF contact force file header changed in '
-                                 'file {}'.format(file))
-                        continue
-
-                    data = np.loadtxt(f, skiprows=1, ndmin=2,
-                                      converters=conv, encoding=None)
-
-                contact_f_in_rf_data = np.append(contact_f_in_rf_data,
-                                                 data,
-                                                 axis=0)
-            log.debug('read {} lines of RF contact force data'
-                      .format(contact_f_in_rf_data.shape[0]))
-
-        if contact_f_in_rf_data.size > 0:
-            rf_force = RFForce(
-                time=contact_f_in_rf_data[:, 0].astype(np.int32),
-                force=contact_f_in_rf_data[:, 1].astype(np.float32),
-                axial_angle=contact_f_in_rf_data[:, 2].astype(np.float32),
-                lateral_angle=contact_f_in_rf_data[:, 3].astype(np.float32),
-                abl_point=np.full(contact_f_in_rf_data.shape[0],
-                                  -1,
-                                  dtype=np.int32
-                                  ),
-                position=np.full((contact_f_in_rf_data.shape[0], 3),
-                                 np.nan,
-                                 dtype=np.float32
-                                 )
-            )
-
-        # update rf data with point force data
-        if self.points:
-            log.info('updating RF dataset with EGM coordinates')
-            for point in self.points:
-                # add indices to the parent maps RF datasets referring back to
-                # the ID and egmSurfX of this point
-                if 'Ablation' in point.tags:
-                    # this is an ablation point
-                    point_id = int(point.name[1:])
-                    point_coord = point.prjX
-
-                    idx_min = np.argmin(np.abs(point.forceData.time))
-                    acq_time = point.forceData.systemTime[idx_min]
-
-                    sys_time = rf_force.time
-                    idx_min = np.argmin(np.abs(sys_time - acq_time))
-                    rf_force.ablationPoint[idx_min] = point_id
-                    rf_force.position[idx_min, :] = point_coord
-        else:
-            log.info('no points found in map, cannot update RF dataset with '
-                     'EGM coordinates!')
-
-        return MapRF(force=rf_force, ablation_parameters=rf_abl)
-
-    def _import_attributes(self):
-        """
-        Load info and file(s) associated with this map from study XML.
-
-        Returns:
-            None
-
-        """
-
-        xml_file = self.parent.repository.join(self.studyXML)
-        with self.parent.repository.open(xml_file) as fid:
-            root = ET.parse(fid).getroot()
-
-        map_item = [x for x in root.find('Maps').findall('Map')
-                    if x.get('Name') == self.name]
-        if not map_item:
-            raise MapAttributeError('no map with name {} found in study XML'
-                                    .format(self.name))
-        if len(map_item) > 1:
-            raise MapAttributeError('multiple maps with name {} found in '
-                                    'study XML'
-                                    .format(self.name))
-        map_item = map_item[0]
-
-        log.debug('reading map attributes')
-
-        self.index = int(map_item.get('Index'))
-        self.visible = map_item.get('Visible')
-        self.type = map_item.get('Type')
-        num_files = int(map_item.get('NumFiles'))
-        if num_files == 0:
-            raise MapAttributeError('no mesh file specified for map {}'
-                                    .format(self.name))
-
-        filenames = map_item.get('FileNames')
-        if num_files > 1 or not filenames.lower().endswith('.mesh'):
-            # TODO: handle filenames if more than one file
-            raise MapAttributeError('Mesh file for map {} cannot be extracted '
-                                    'from study XML'
-                                    .format(self.name))
-        self.surfaceFile = filenames
-        self.volume = float(map_item.get('Volume'))
-        self.RefAnnotationConfig = RefAnnotationConfig(
-            algorithm=int(
-                map_item.find('RefAnnotationConfig').get('Algorithm')
-            ),
-            connector=int(
-                map_item.find('RefAnnotationConfig').get('Connector')
-            )
-        )
-
-        # get map coloring range table
-        colorRangeItem = map_item.find('ColoringRangeTable')
-        colorRangeTable = []
-        for colorRange in colorRangeItem.findall('ColoringRange'):
-            colorRangeTable.append(
-                ColoringRange(Id=int(colorRange.get('Id')),
-                              min=float(colorRange.get('Min')),
-                              max=float(colorRange.get('Max'))
-                              )
-            )
-        self.coloringRangeTable = colorRangeTable
-
-        return True
-
-    @staticmethod
-    def _sort_rf_filenames(filenames, order='ascending'):
-        """Sort a list of filenames."""
-
-        names = [x.lower() for x in filenames]
-        idx_sorted = np.arange(len(filenames))
-
-        # determine the kind of files
-        if any(names[0].startswith(x) for x in ['contactforceinrf_', 'rf_']):
-            num_list = [int(re.sub(r'[^0-9]*', "", name.split('_')[-1]))
-                        for name in names]
-            idx_sorted = np.argsort(num_list)
-
-        if order.lower() == 'descending':
-            idx_sorted = np.flip(idx_sorted)
-
-        return [filenames[i] for i in idx_sorted]
-
-
-class CartoPoint(EPPoint):
-    """
-    Class representing Carto3 point.
-
-    Attributes:
-        name : str
-            identifier for this recording point
-        pointFile : str
-            name of the points XML file <map_name>_<point_ID>_Point_Export.xml
-        parent : CartoMap
-            parent mapping procedure this point belongs to
-        recX : ndarray (3, )
-            coordinates at which this point was recorded
-        prjX : ndarray (3, )
-            coordinates of the closest anatomical shell vertex
-        prjDistance : float
-            distance between recording location and closest shell vertex
-        refAnnotation : int
-            annotation for reference detection in samples
-        latAnnotation : int
-            annotation for local activation time in samples
-        woi : ndarray (2, 1)
-            start and end timestamps of the WOI in samples
-        uniVoltage : float
-            peak-to-peak voltage in unipolar EGM
-        bipVoltage : float
-            peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
-            unipolar EGm trace(s). If supported by the mapping system,
-            two unipolar traces are stored
-        egmRef : Trace
-            reference trace
-        impedance : float
-        force : float
-        barDirection : ndarray (3, 1)
-            surface normal of the closest surface point
-        tags : list of str
-            tags assigned to this point, i.e. 'Full_name' in study's TagsTable
-        ecgFile : str
-            name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, )
-            cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are same as recX if
-            position cannot be determined
-        forceFile : str
-            name of the points contact force file
-            <map_name>_<point_name>_Contact_Force.txt
-        forceData : PointForce
-            full contact force data for this point
-        impedanceData : PointImpedance
-            full impedance data for this point
-
-    Methods:
-        is_valid()
-            check if point has LAT annotation within WOI
-        load(egm_names_from_pos=False)
-            load all data associated with this point
-        import_ecg(channel_names)
-            import ECG data for this point
-
-    """
-
-    def __init__(self, name,
-                 coordinates=np.full(3, np.nan, dtype=np.float32),
-                 tags=None,
-                 parent=None):
-        """
-        Constructor.
-
-        Parameters:
-             name : str
-                name / identifier for this point
-            coordinates : ndarray(3, )
-                cartesian coordinates of recording position
-            tags: list of str (optional)
-                tags assigned to this point, i.e. 'Full_name' in study's
-                TagsTable
-            parent : CartoMap
-                the map this point belongs to
-
-        Returns:
-            None
-
-        """
-
-        super().__init__(name, coordinates=coordinates, parent=parent)
-
-        # add Carto3 specific attributes
-        self.pointFile = ''
-        self.barDirection = None
-        self.tags = tags
-        self.ecgFile = ''
-        self.uniX = np.full(3, np.nan, dtype=np.float32)
-        self.forceFile = ''
-        self.forceData = None
-        self.impedanceData = None
-
-    def import_point(self, point_file, egm_names_from_pos=False):
-        """
-        Load data associated with this point.
-
-        Parameters:
-            point_file : str
-                name of this points XML file
-                <map_name>_<point_name>_Point_Export.xml
-            egm_names_from_pos : boolean
-                If True, EGM electrode names are extracted from positions file.
-                This also returns name and coordinates of the second unipolar
-                channel.
-
-        Raises:
-            FileNotFoundError : if point's XML is not found
-
-        Returns:
-            None
-
-        """
-
-        log.debug('Loading point data for point {}'.format(self.name))
-
-        file_loc = self.parent.parent.repository.join(point_file)
-        if not self.parent.parent.repository.is_file(file_loc):
-            log.info('Points export file {} does not exist'
-                     .format(point_file))
-            raise FileNotFoundError
-        self.pointFile = point_file
-
-        # read annotation data
-        point_file = self.parent.parent.repository.join(self.pointFile)
-        with self.parent.parent.repository.open(point_file) as fid:
-            root = ET.parse(fid).getroot()
-
-        annotation_item = root.find('Annotations')
-        self.refAnnotation = int(annotation_item.get('Reference_Annotation'))
-        self.latAnnotation = int(annotation_item.get('Map_Annotation'))
-        woi_item = root.find('WOI')
-        self.woi = np.asarray([woi_item.get('From'),
-                               woi_item.get('To')]
-                              ).astype(int)
-        voltages_item = root.find('Voltages')
-        self.uniVoltage = float(voltages_item.get('Unipolar'))
-        self.bipVoltage = float(voltages_item.get('Bipolar'))
-
-        # read impedance data
-        impedance_item = root.find('Impedances')
-        n_impedance_values = int(impedance_item.get('Number'))
-        if n_impedance_values > 0:
-            impedance_value = np.empty(n_impedance_values, dtype=np.float32)
-            impedance_time = np.empty(n_impedance_values, dtype=np.int32)
-            for i, x in enumerate(impedance_item.findall('Impedance')):
-                impedance_time[i] = x.get('Time')
-                impedance_value[i] = x.get('Value')
-
-            self.impedanceData = PointImpedance(time=impedance_time,
-                                                value=impedance_value)
-            # update base class impedance value with the one closest to LAT
-            self.impedance = impedance_value[
-                np.nanargmin(np.abs(impedance_time - self.latAnnotation))
-            ]
-
-        self.ecgFile = root.find('ECG').get('FileName')
-
-        # get egm names from ECG file
-        ecg_file = self.parent.parent.repository.join(self.ecgFile)
-        with self.parent.parent.repository.open(ecg_file) as fid:
-            ecg_file_header = read_ecg_file_header(
-                fid,
-                encoding=self.parent.parent.encoding
-            )
-        if ecg_file_header['version'] == '4.1':
-            # channel names are given in pointFile for version 4.1+
-            ecg_file_header['name_bip'] = root.find('ECG').get(
-                'BipolarMappingChannel')
-            ecg_file_header['name_uni'] = root.find('ECG').get(
-                'UnipolarMappingChannel')
-            ecg_file_header['name_ref'] = root.find('ECG').get(
-                'ReferenceChannel')
-        egm_names = self._channel_names_from_ecg_header(ecg_file_header)
-
-        # get coordinates of second unipolar channel
-        self.uniX = self._get_2nd_uni_x(encoding=self.parent.parent.encoding)
-
-        if egm_names_from_pos:
-            egm_names, uniCoordinates = self._channel_names_from_pos_file(
-                egm_names,
-                encoding=self.parent.parent.encoding
-            )
-            self.uniX = uniCoordinates
-
-        # now we can import the electrograms for this point
-        egm_data = self.load_ecg([egm_names['bip'],
-                                  egm_names['uni1'],
-                                  egm_names['uni2'],
-                                  egm_names['ref']])
-        # build egm traces
-        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
-        egmUni = [
-            [t for t in egm_data if t.name == egm_names['uni1']][0],
-            [t for t in egm_data if t.name == egm_names['uni2']][0]
-        ]
-        self.egmUni = egmUni
-        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
-
-        # get the closest surface vertex for this point
-        if self.parent.surface.has_points():
-            closest, distance, direct = self.parent.surface.get_closest_vertex(
-                [self.recX]
-            )
-            if closest.shape[0] != 1:
-                log.warning('found no or multiple surface vertices closest to '
-                            'to point {}: {}'
-                            .format(self.name, closest))
-            self.prjX = np.array(closest[0], dtype=np.float32)
-            self.prjDistance = distance[0]
-            self.barDirection = direct[0]
-
-        # now get the force data for this point
-        log.debug('reading force file for point {}'.format(self.name))
-        try:
-            self.forceFile = root.find('ContactForce').get('FileName')
-            force_file = self.parent.parent.repository.join(self.forceFile)
-            if self.parent.parent.repository.is_file(force_file):
-                with self.parent.parent.repository.open(force_file) as fid:
-                    self.forceData = read_force_file(
-                        fid, encoding=self.parent.parent.encoding
-                    )
-                if np.isnan(self.forceData.force):
-                    # update base class force value with the one closest to LAT
-                    self.force = self.forceData.timeForce[
-                        np.nanargmin(np.abs(self.forceData.timeForce
-                                            - self.latAnnotation)
-                                     )
-                    ]
-                else:
-                    self.force = self.forceData.force
-
-            else:
-                log.debug('No force file found for point {}'.format(self.name))
-        except AttributeError:
-            log.debug('No force data saved for point {}'.format(self.name))
-
-    def is_valid(self):
-        """
-        Check if LAT annotation is within the WOI.
-
-        Raises:
-            ValueError : If no WOI or reference annotation is found or there
-                no LAT annotation for this point
-
-        Returns:
-            True if the points map annotation is within the WOI, else False
-
-        """
-
-        if not self.latAnnotation:
-            log.warning('no activation annotation found for {}!'
-                        .format(self.name)
-                        )
-            raise ValueError('Parameter mapAnnotation missing!')
-        if self.woi.size == 0 or not self.refAnnotation:
-            log.warning('no woi and/or reference annotation found for {}!'
-                        .format(self.name)
-                        )
-            raise ValueError('Parameters WOI and/or refAnnotation missing!')
-
-        woi = self.woi + self.refAnnotation
-
-        return woi[0] < self.latAnnotation < woi[1]
-
-    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
-        """
-        Load ECG data for this point.
-
-        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
-
-        Parameters:
-            channel_names : string or list of string
-                channel names to read
-            reload : bool
-                reload data if already present
-
-        Raises:
-            KeyError : If a channel name is not found in ECG file
-
-        Returns:
-             list of Trace
-        """
-
-        if not self.ecgFile:
-            log.warning('No ECG file found for point {}'.format(self.name))
-            return None
-
-        ecg_file = self.parent.parent.repository.join(self.ecgFile)
-
-        if isinstance(channel_names, str):
-            channel_names = [channel_names]
-
-        with self.parent.parent.repository.open(ecg_file) as fid:
-            ecg_header = read_ecg_file_header(fid)
-        ecg_channels = ecg_header['ecg_names']
-
-        not_found = []
-        if not channel_names:
-            # read all channels
-            channel_names = ecg_channels
-        else:
-            # check if all names are valid
-            not_found = [item for item in channel_names
-                         if not any([channel.startswith(item+'(')
-                                     for channel in ecg_channels])]
-        if not_found:
-            raise KeyError('channel(s) {} not found for point {}'
-                           .format(not_found, self.name))
-
-        if not reload:
-            # check which data is already loaded
-            channel_names = [n for n in channel_names
-                             if n not in self.get_ecg_names()
-                             ]
-            if not channel_names:
-                # all data already loaded, skip rest
-                return []
-
-        # get index of required channels in file
-        cols = [ecg_channels.index(x) for channel in channel_names
-                for x in ecg_channels if x.startswith(channel+'(')]
-
-        with self.parent.parent.repository.open(ecg_file) as fid:
-            ecg_data = read_ecg_file(fid,
-                                     column_indices=cols,
-                                     skip_rows=ecg_header['header_lines']
-                                     )
-        ecg_data *= ecg_header['gain']
-
-        try:
-            ecg_data.shape[1]
-        except IndexError:
-            # array has shape (2500,) but (2500,1) is needed
-            ecg_data = np.expand_dims(ecg_data, axis=1)
-
-        # build Traces
-        traces = []
-        for i, name in enumerate(channel_names):
-            traces.append(
-                Trace(name=name,
-                      data=ecg_data[:, i].astype(np.float32),
-                      fs=1000.0)
-            )
-
-        return traces
-
-    def _channel_names_from_ecg_header(self, ecg_header):
-        """
-        Get channel names for BIP, UNI and REF traces from file header.
-
-        This function also tries to extract the name of the second unipolar
-        channel from the bipolar channel name.
-
-        Parameters:
-            ecg_header : dict
-                header info returned from read_ecg_file_header()
-
-        Returns:
-            dict : channel names
-                keys: 'bip', 'uni1', 'uni2', 'ref'
-        """
-
-        log.debug('extracting channel names from ECG header for point {}'
-                  .format(self.name))
-
-        # MEC connector names have different naming convention
-        if ecg_header['name_bip'].startswith('MCC'):
-            log.warning('point {} was recorded with MEC connector, unipolar '
-                        'channel names might be wrong!'
-                        .format(self.name))
-            uni_name1 = ecg_header['name_uni']
-            # TODO: fix second unipolar channel name for MCC Ablation
-            uni_name2 = uni_name1
-
-        else:
-            # get unipolar names from bipolar electrode names
-            try:
-                connector, channels = ecg_header['name_bip'].split('_')
-                channel_num = channels.split('-')
-                uni_name1 = connector + '_' + channel_num[0]
-                uni_name2 = connector + '_' + channel_num[1]
-            except ValueError:
-                # some connectors don't add the connector name at beginning
-                channel_names = ecg_header['name_bip'].split('-')
-                uni_name1 = channel_names[0]
-                uni_name2 = channel_names[1]
-
-        # compare extracted names with header info
-        if not uni_name1 == ecg_header['name_uni']:
-            log.warning('extracted unipolar EGM channel name does not match '
-                        'ECG header info! Using header info!')
-            uni_name1 = ecg_header['name_uni']
-            uni_name2 = uni_name1
-
-        return {'bip': ecg_header['name_bip'],
-                'uni1': uni_name1,
-                'uni2': uni_name2,
-                'ref': ecg_header['name_ref']
-                }
-
-    def _get_2nd_uni_x(self, encoding='cp1252'):
-        """
-        Get coordinates for 2nd unipolar channel from position file(s).
-
-        Searches for recording coordinates in position file(s) and extracts
-        coordinates of the subsequent channel. This should be the correct
-        second unipolar channel for bipolar recordings.
-
-        NOTE: If coordinates cannot be determined, the recording position of
-        the first unipolar channel is used!
-
-        NOTE: Method _channel_names_from_pos_file is more elaborate but
-        fails often for missing channel positions in position files!
-
-        Parameters:
-            encoding:
-
-        Returns:
-            ndarray(3, )
-                coordinates of the second unipolar channel
-
-        """
-
-        xyz_2 = np.full(3, np.nan, dtype=np.float32)
-
-        log.debug('get position of 2nd unipolar channel')
-
-        # read points XML file
-        point_file = self.parent.parent.repository.join(self.pointFile)
-        with self.parent.parent.repository.open(point_file) as fid:
-            root = ET.parse(fid).getroot()
-
-        # get position files
-        position_files = []
-        for connector in root.find('Positions').findall('Connector'):
-            connector_file = list(connector.attrib.values())[0]
-            if 'ectrode_positions_onannotation' in connector_file.lower():
-                position_files.append(connector_file)
-
-        for filename in position_files:
-            pos_file = self.parent.parent.repository.join(filename)
-            if not self.parent.parent.repository.is_file(pos_file):
-                log.warning('position file {} for point {} not found'
-                            .format(filename, self.name))
-                continue
-
-            with self.parent.parent.repository.open(pos_file) as fid:
-                idx, time, xyz = read_electrode_pos_file(fid, encoding=encoding)
-
-            # find electrode with the closest distance
-            dist = sp_distance.cdist(xyz, np.expand_dims(self.recX, axis=1).T).flatten()
-            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
-            if idx_closest.size != 1:
-                log.debug(
-                    'found no or multiple electrodes with same minimum '
-                    'distance in file {}. Trying next file...'
-                    .format(filename))
-                continue
-            idx_closest = idx_closest[0]
-            if dist[idx_closest] > 0:
-                # position must be exact match
-                continue
-
-            try:
-                xyz_2 = xyz[idx_closest + 1, :]
-            except IndexError:
-                log.debug('unable to get position of 2nd uni channel for '
-                          'point {}'.format(self.name))
-
-        if np.isnan(xyz_2).all():
-            log.warning('coordinates for 2nd unipolar channel not found for '
-                        'point {}, using recording position'
-                        .format(self.name))
-            xyz_2 = self.recX
-
-        return xyz_2
-
-    def _channel_names_from_pos_file(self, egm_names, encoding='cp1252'):
-        """
-        Get channel names for BIP, UNI and REF traces from electrode positions.
-
-        Extracted names are compared to EGM names in CARTO point ECG file. If
-        discrepancies are found, the names from the ECG files are used.
-
-        Parameters:
-            egm_names : dict
-                names extracted from ECG file for comparison
-            encoding :
-
-        Returns:
-            dict : channel names
-                keys: 'bip', 'uni1', 'uni2', 'ref'
-        """
-
-        log.debug('extracting channel names from position files for point {}'
-                  .format(self.name))
-
-        # read points XML file
-        point_file = self.parent.parent.repository.join(self.pointFile)
-        with self.parent.parent.repository.open(point_file) as fid:
-            root = ET.parse(fid).getroot()
-
-        # get position files
-        position_files = []
-        for connector in root.find('Positions').findall('Connector'):
-            connector_file = list(connector.attrib.values())[0]
-            if connector_file.lower().endswith('ectrode_positions_onannotation.txt'):
-                position_files.append(connector_file)
-
-        bipName, uniName, xyz_2 = self._find_electrode_at_pos(
-            self.recX,
-            position_files,
-            encoding=encoding
-        )
-        uniCoordinates = np.stack((self.recX, xyz_2), axis=-1)
-
-        # now check the name of the electrode identified above by
-        # comparing with the ECG_Export file
-        if not egm_names['bip'] == bipName:
-            log.warning('Conflict: bipolar electrode name {} from position '
-                        'file does not match electrode name {} in ECG file!\n'
-                        'Using name from ECG file for point {}.'
-                        .format(bipName, egm_names['bip'], self.name)
-                        )
-            bipName = egm_names['bip']
-
-        if not egm_names['uni1'] == uniName[0]:
-            log.warning('Conflict: unipolar electrode name {} from position '
-                        'file does not match electrode name {} in ECG file!\n'
-                        'Using name from ECG file for point {}.'
-                        .format(uniName[0], egm_names['uni1'], self.name)
-                        )
-            uniName[0] = egm_names['uni1']
-            uniName[1] = egm_names['uni2']
-
-        names = {'bip': bipName,
-                 'uni1': uniName[0],
-                 'uni2': uniName[1],
-                 'ref': egm_names['uni1']
-                 }
-
-        return names, uniCoordinates
-
-    def _find_electrode_at_pos(self,
-                               point_xyz,
-                               position_files,
-                               encoding='cp1252'):
-        """
-        Find electrode that recorded Point at xyz.
-
-        This function also tries to identify the name and coordinates of the
-        second unipolar channel which made the bipolar recording.
-
-        Parameters:
-            point_xyz : ndarray (3, 1)
-                coordinates of the point
-            position_files : list of string
-                path to the position files
-            encoding :
-
-        Returns:
-             egm_name_bip : string
-                name of the bipolar channel
-            egm_name_uni : list of string
-                names of the unipolar channels
-            xyz_2 : ndarray (3, )
-                coordinates of the second unipolar channel
-        """
-
-        log.debug('find electrode that recorded point at {}'
-                  .format(point_xyz))
-
-        egm_name_bip = ''
-        egm_name_uni = ['', '']
-        xyz_2 = np.full(3, np.nan, dtype=np.float32)
-
-        channel_number = np.nan
-
-        for filename in position_files:
-            pos_file = self.parent.parent.repository.join(filename)
-            if not self.parent.parent.repository.is_file(pos_file):
-                log.warning('position file {} for point {} not found'
-                            .format(filename, self.name))
-                continue
-
-            with self.parent.parent.repository.open(pos_file) as fid:
-                idx, time, xyz = read_electrode_pos_file(fid)
-
-            # calculate range of electrode positions and add last index
-            lim = np.append(np.where(idx[:-1] != idx[1:])[0], len(idx) - 1)
-
-            # find electrode with the closest distance
-            dist = sp_distance.cdist(xyz, np.array([point_xyz])).flatten()
-            idx_closest = np.argwhere(dist == np.amin(dist)).flatten()
-            if idx_closest.size != 1:
-                log.debug('found no or multiple electrodes with same minimum '
-                          'distance in file {}. Trying next file...'
-                          .format(filename))
-                continue
-            idx_closest = idx_closest[0]
-            if dist[idx_closest] > 0:
-                # position must be exact match
-                continue
-
-            # get channel list and index for reduced positions
-            electrode_idx = lim.searchsorted(idx_closest, 'left')
-            channel_list = idx[lim]
-
-            # find second unipolar channel recorded at same time in next
-            # position block
-            time_closest = time[idx_closest]
-            # get block limits
-            try:
-                block_start = lim[electrode_idx] + 1
-                idx_end = lim[electrode_idx+1] + 1
-            except IndexError:
-                log.warning('point was recorded with last electrode, unable '
-                            'to get second channel!')
-                continue
-
-            block_end = idx_end if (idx_end < time.shape[0]) else None
-            idx_time = np.argwhere(time[block_start:block_end] == time_closest).flatten()
-            if idx_time.size != 1:
-                log.debug('found no matching time stamp for second unipolar '
-                          'channel in file {}'
-                          .format(filename))
-            else:
-                xyz_2 = xyz[idx_time[0] + lim[electrode_idx] + 1, :]
-
-            # translate connector index to channel number
-            try:
-                egm_name_bip, egm_name_uni = self._translate_connector_index(
-                    channel_list,
-                    electrode_idx,
-                    filename
-                )
-                # if no error, update minimum distance and file
-                min_dist = dist[idx_closest]
-            except IndexError:
-                # channel indexing does not match used connector, sometimes
-                # channels are missing in position on annotation file
-
-                if '_OnAnnotation' not in filename:
-                    # already working on extended files
-                    log.debug('unable to get channel name from extended '
-                              'position file {}'.format(filename))
-                    break
-
-                log.warning('channel indexing does not match connector! '
-                            'Trying to find in extensive position file(s)')
-
-                # get filename of extended position file
-                ext_filename = filename.replace('_OnAnnotation', '')
-                egm_name_bip, egm_name_uni, xyz_2 = (
-                    self._find_electrode_at_pos(self.recX,
-                                                [ext_filename],
-                                                encoding=encoding)
-                )
-
-        if not egm_name_bip or not any(egm_name_uni):
-            log.warning('unable to find which electrode recorded '
-                        'point {} at {}!'
-                        .format(self.name, point_xyz))
-            return ('',
-                    ['', ''],
-                    np.full(3, np.nan, dtype=np.float32)
-                    )
-
-        return egm_name_bip, egm_name_uni, xyz_2
-
-    @staticmethod
-    def _translate_connector_index(channel_list, electrode_index, filename):
-        """
-        Translate connector index in electrode position file to channel name
-        in ecg file.
-
-        Raises:
-            IndexError : If channel indexing does not match a known connector.
-
-        Returns:
-             egm_name_bip : string
-                name of the bipolar channel
-            egm_name_uni : list of string
-                names of the unipolar channels
-
-        """
-
-        egm_name_bip = ''
-        egm_name_uni = ['', '']
-
-        LASSO_INDEXING = [1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-                          1, 2, 3, 4]
-        PENTA_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                          14, 15, 16, 17, 18, 19, 20, 21, 22]
-        # TODO: implement correct indexing for CS catheter
-        CS_INDEXING = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
-        # now we have to translate the filename into the egm name that gives us
-        # the correct egm in the ECG_Export file.
-        identifier = ['CS_CONNECTOR',
-                      'MAGNETIC_20_POLE_A_CONNECTOR',
-                      'MAGNETIC_20_POLE_B_CONNECTOR',
-                      'NAVISTAR_CONNECTOR',
-                      'MEC']
-        translation = ['CS',
-                       '20A_',
-                       '20B_',
-                       'M',
-                       'MCC Abl BiPolar']
-
-        idx_identifier = [identifier.index(x) for x in identifier
-                          if x in filename][0]
-        egm_name = translation[idx_identifier]
-
-        if egm_name == 'MCC Abl BiPolar':
-            electrode_number = channel_list[electrode_index]
-            egm_name_bip = egm_name + ' {}'.format(electrode_number)
-            egm_name_uni[0] = 'M{}'.format(electrode_number)
-            # TODO: what is the second unipolar channel for this?
-            egm_name_uni[1] = egm_name_uni[0]
-
-        elif egm_name == '20A_' or egm_name == '20B_':
-            # check which catheter was used
-            if np.array_equal(channel_list, LASSO_INDEXING):
-                # two electrodes offset and 1-based numbering
-                electrode_number = electrode_index - 2 + 1
-            elif np.array_equal(channel_list, PENTA_INDEXING):
-                electrode_number = channel_list[electrode_index]
-            else:
-                raise IndexError('channel indexing does not match specified '
-                                 'connector!')
-
-            # build channel name
-            egm_name_bip = '{}{}-{}'.format(egm_name,
-                                            electrode_number,
-                                            electrode_number + 1)
-            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
-            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
-            # TODO: why is this done??
-            if egm_name_bip == '20B_7-8':
-                egm_name_bip = '20B_9-8'
-
-        else:
-            log.warning('unknown connector! Trying best guess for channel '
-                        'name!')
-            electrode_number = channel_list[electrode_index]
-            egm_name_bip = '{}{}-{}{}'.format(egm_name,
-                                              electrode_number,
-                                              egm_name,
-                                              electrode_number + 1)
-            egm_name_uni[0] = '{}{}'.format(egm_name, electrode_number)
-            egm_name_uni[1] = '{}{}'.format(egm_name, electrode_number + 1)
-
-        return egm_name_bip, egm_name_uni
