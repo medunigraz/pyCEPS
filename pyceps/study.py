@@ -939,7 +939,7 @@ class EPMap:
             for signal in bsecg.traces:
                 data_dict[signal.name] = signal.data.tolist()
 
-            bsecg_json['bsecg'] = data_dict
+            bsecg_json['ecg'] = data_dict
 
             f = writer.dump(filename, bsecg_json, indent=2)
             log.info('exported body surface ECG trace(s) {} to {}'
