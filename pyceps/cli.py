@@ -401,7 +401,7 @@ def export_map_data(study, map_name, args):
     out_path = ''
     if args.save_study:
         out_path = '' if args.save_study == 'DEFAULT' else args.save_study
-        out_path = study.resolve_export_folder(os.path.dirname(out_path))
+    out_path = study.resolve_export_folder(os.path.dirname(out_path))
 
     # save carto mesh
     if args.dump_mesh:
