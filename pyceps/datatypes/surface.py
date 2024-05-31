@@ -627,8 +627,8 @@ class Surface:
                         )
             return None
 
-        numVerts = element.get('numVertices')
-        numTris = element.get('numTriangles')
+        numVerts = int(element.get('numVertices'))
+        numTris = int(element.get('numTriangles'))
 
         verts = [x for x in element.findall('DataArray')
                  if x.get('name') == 'vertices'][0]
