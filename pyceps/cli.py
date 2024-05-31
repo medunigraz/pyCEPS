@@ -127,7 +127,8 @@ def get_args():
         help='Save study as pyCEPS file.\n'
              'Default location is folder above study root, default name is '
              'study name e.g. <study_root>/../<study_name>.pyceps\n'
-             'Custom location and file name can be given alternatively.'
+             'Custom location and file name can be given alternatively. All '
+             'export files are redirected to this location.'
     )
     bio.add_argument(
         '--keep-ecg',
