@@ -296,9 +296,12 @@ class FileWriter:
 
         assert self._fileName.endswith('.dat')
 
+        if data.ndim != 1:
+            raise ValueError('multidimensional data is not supported for '
+                             'DAT files!')
+
         with open(self._fileName, 'w+')as f:
-            data_str = np.asarray(data, dtype=str)
-            data_str = '\n'.join(data_str)
+            data_str = '\n'.join(data.astype(str))
             f.write(data_str)
             f.write('\n')  # meshalyzer needs CR at end of file
             f.flush()

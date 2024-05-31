@@ -487,6 +487,7 @@ class Surface:
         writer = FileWriter()
 
         writer.dump(filename + '.pts', self.X)
+        # TODO: add region labels/tags to .elem export
         writer.dump(filename + '.elem', self.tris)
 
         return filename
