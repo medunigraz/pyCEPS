@@ -256,17 +256,18 @@ class FileWriter:
         """
 
         assert self._fileName.endswith('.pts_t')
-        if not isinstance(points, np.ndarray):
-            raise TypeError('Received unknown datatype for points')
 
-        # TODO: add support for multidimensional points
+        if not isinstance(points, list):
+            points = [points]
 
-        # header equals number of nodes
-        header = '{}\n{}'.format(1, points.shape[0])
-        np.savetxt(self._fileName, points,
-                   fmt='%f %f %f',
-                   comments='',
-                   header=header)
+        with open(self._fileName, 'w') as fid:
+            # write number of frames
+            fid.write('{}\n'.format(len(points)))
+
+            for data in points:
+                # write points per frame
+                fid.write('{}\n'.format(data.shape[0]))
+                np.savetxt(fid, data, fmt='%f %f %f')
 
         self.log.debug('exported points to {}'.format(self._fileName))
 
@@ -328,13 +329,19 @@ class FileWriter:
 
         assert self._fileName.endswith('.dat_t')
 
-        # TODO: add support for multidimensional points
+        if not isinstance(data, list):
+            data = [data]
 
         with open(self._fileName, 'w+')as f:
-            data_str = np.asarray(data, dtype=str)
-            f.write('{}\n{}\n'.format(1, data.shape[0]))
-            data_str = '\n'.join(data_str)
-            f.write(data_str)
+            # write number of frames
+            f.write('{}\n'.format(len(data)))
+
+            for frame in data:
+                f.write('{}\n'.format(frame.shape[0]))
+                data_str = np.asarray(frame, dtype=str)
+                data_str = '\n'.join(data_str)
+                f.write(data_str)
+
             f.write('\n')  # meshalyzer needs CR at end of file
             f.flush()
 
