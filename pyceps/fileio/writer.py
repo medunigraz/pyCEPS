@@ -133,18 +133,28 @@ class FileWriter:
 
         assert self._fileName.endswith('.elem')
 
-        isTris = True if surfs.shape[1] == 3 else False
-        isQuads = True if surfs.shape[1] == 4 else False
+        isTris = surfs.shape[1] == 3
+        isQuads = surfs.shape[1] == 4
+
+        if not etags:
+            etags = np.full((surfs.shape[0], 1), 0)
+        # check etags dimensions
+        if not etags.shape[0] == surfs.shape[0]:
+            raise ValueError('dimension of etags does not match elements')
+
+        # concatenate data
+        data = np.concatenate((surfs, etags), axis=1)
 
         # header equals number of elements
         header = str(surfs.shape[0])
+
         if isTris:
-            np.savetxt(self._fileName, surfs,
-                       fmt='Tr %u %u %u {}'.format(etags),
+            np.savetxt(self._fileName, data,
+                       fmt='Tr %u %u %u %u',
                        comments='', header=header)
         elif isQuads:
-            np.savetxt(self._fileName, surfs,
-                       fmt='Qd %u %u %u %u {}'.format(etags),
+            np.savetxt(self._fileName, data,
+                       fmt='Qd %u %u %u %u %u',
                        comments='', header=header)
         else:
             raise TypeError('Export of only triangles and quads is supported!')
