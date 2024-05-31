@@ -18,7 +18,7 @@
 
 import os
 import logging
-from typing import Optional, Union, List
+from typing import Optional, Union, List, TypeVar
 import zipfile
 import py7zr
 import re
@@ -61,8 +61,13 @@ from pyceps.datatypes.carto.visitag import (
 from pyceps.datatypes.carto.paso import PaSo, PasoTable, PaSoTemplate
 from pyceps.datatypes.lesions import Lesions, RFIndex
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
-from pyceps.datatypes.exceptions import MapAttributeError, MeshFileNotFoundError
+from pyceps.datatypes.exceptions import (MapAttributeError,
+                                         MeshFileNotFoundError
+                                         )
 from pyceps.utils import console_progressbar, get_col_idx_from_header
+
+
+TCartoStudy = TypeVar('TCartoStudy', bound='CartoStudy')  # workaround to type hint self
 
 
 log = logging.getLogger(__name__)
@@ -129,13 +134,15 @@ class CartoPoint(EPPoint):
             load all data associated with this point
         import_ecg(channel_names)
             import ECG data for this point
-
     """
 
-    def __init__(self, name,
-                 coordinates=np.full(3, np.nan, dtype=np.float32),
-                 tags=None,
-                 parent=None):
+    def __init__(
+            self,
+            name: str,
+            coordinates: np.ndarray = np.full(3, np.nan, dtype=np.float32),
+            tags: Optional[List[str]] = None,
+            parent: Optional['CartoMap'] = None
+    ) -> None:
         """
         Constructor.
 
@@ -147,7 +154,7 @@ class CartoPoint(EPPoint):
             tags: list of str (optional)
                 tags assigned to this point, i.e. 'Full_name' in study's
                 TagsTable
-            parent : CartoMap
+            parent : CartoMap (optional)
                 the map this point belongs to
 
         Returns:
@@ -167,7 +174,11 @@ class CartoPoint(EPPoint):
         self.forceData = None
         self.impedanceData = None
 
-    def import_point(self, point_file, egm_names_from_pos=False):
+    def import_point(
+            self,
+            point_file: str,
+            egm_names_from_pos: bool = False
+    ) -> None:
         """
         Load data associated with this point.
 
@@ -185,7 +196,6 @@ class CartoPoint(EPPoint):
 
         Returns:
             None
-
         """
 
         log.debug('Loading point data for point {}'.format(self.name))
@@ -311,7 +321,9 @@ class CartoPoint(EPPoint):
         except AttributeError:
             log.debug('No force data saved for point {}'.format(self.name))
 
-    def is_valid(self):
+    def is_valid(
+            self
+    ) -> bool:
         """
         Check if LAT annotation is within the WOI.
 
@@ -339,7 +351,12 @@ class CartoPoint(EPPoint):
 
         return woi[0] < self.latAnnotation < woi[1]
 
-    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
+    def load_ecg(
+            self,
+            channel_names: Optional[Union[str, List[str]]] = None,
+            reload: bool = False,
+            *args, **kwargs
+    ) -> Optional[List[Trace]]:
         """
         Load ECG data for this point.
 
@@ -407,7 +424,7 @@ class CartoPoint(EPPoint):
         try:
             ecg_data.shape[1]
         except IndexError:
-            # array has shape (2500,) but (2500,1) is needed
+            # array has shape (2500, ) but (2500, 1) is needed
             ecg_data = np.expand_dims(ecg_data, axis=1)
 
         # build Traces
@@ -421,7 +438,10 @@ class CartoPoint(EPPoint):
 
         return traces
 
-    def _channel_names_from_ecg_header(self, ecg_header):
+    def _channel_names_from_ecg_header(
+            self,
+            ecg_header: dict
+    ) -> dict:
         """
         Get channel names for BIP, UNI and REF traces from file header.
 
@@ -475,7 +495,10 @@ class CartoPoint(EPPoint):
                 'ref': ecg_header['name_ref']
                 }
 
-    def _get_2nd_uni_x(self, encoding='cp1252'):
+    def _get_2nd_uni_x(
+            self,
+            encoding: str = 'cp1252'
+    ) -> np.ndarray:
         """
         Get coordinates for 2nd unipolar channel from position file(s).
 
@@ -490,12 +513,12 @@ class CartoPoint(EPPoint):
         fails often for missing channel positions in position files!
 
         Parameters:
-            encoding:
+            encoding : str (optional)
+                file encoding
 
         Returns:
             ndarray(3, )
                 coordinates of the second unipolar channel
-
         """
 
         xyz_2 = np.full(3, np.nan, dtype=np.float32)
@@ -552,9 +575,15 @@ class CartoPoint(EPPoint):
 
         return xyz_2
 
-    def _channel_names_from_pos_file(self, egm_names, encoding='cp1252'):
+    def _channel_names_from_pos_file(
+            self,
+            egm_names: dict,
+            encoding: str = 'cp1252'
+    ) -> tuple[dict, np.ndarray]:
         """
         Get channel names for BIP, UNI and REF traces from electrode positions.
+
+        Coordinates of the 2nd unipolar channel are determined and returned.
 
         Extracted names are compared to EGM names in CARTO point ECG file. If
         discrepancies are found, the names from the ECG files are used.
@@ -562,11 +591,14 @@ class CartoPoint(EPPoint):
         Parameters:
             egm_names : dict
                 names extracted from ECG file for comparison
-            encoding :
+            encoding : str (optional)
+                file encoding
 
         Returns:
             dict : channel names
                 keys: 'bip', 'uni1', 'uni2', 'ref'
+            uniCoordinates : ndarray
+                coordinates of the 2nd unipolar channel
         """
 
         log.debug('extracting channel names from position files for point {}'
@@ -618,10 +650,12 @@ class CartoPoint(EPPoint):
 
         return names, uniCoordinates
 
-    def _find_electrode_at_pos(self,
-                               point_xyz,
-                               position_files,
-                               encoding='cp1252'):
+    def _find_electrode_at_pos(
+            self,
+            point_xyz: np.ndarray,
+            position_files: List[str],
+            encoding: str = 'cp1252'
+    ) -> tuple[str, List[str], np.ndarray]:
         """
         Find electrode that recorded Point at xyz.
 
@@ -633,7 +667,8 @@ class CartoPoint(EPPoint):
                 coordinates of the point
             position_files : list of string
                 path to the position files
-            encoding :
+            encoding : str (optional)
+                file encoding
 
         Returns:
              egm_name_bip : string
@@ -708,7 +743,7 @@ class CartoPoint(EPPoint):
             try:
                 egm_name_bip, egm_name_uni = self._translate_connector_index(
                     channel_list,
-                    electrode_idx,
+                    int(electrode_idx),
                     filename
                 )
                 # if no error, update minimum distance and file
@@ -746,10 +781,22 @@ class CartoPoint(EPPoint):
         return egm_name_bip, egm_name_uni, xyz_2
 
     @staticmethod
-    def _translate_connector_index(channel_list, electrode_index, filename):
+    def _translate_connector_index(
+            channel_list: np.ndarray,
+            electrode_index: int,
+            filename: str
+    ) -> tuple[str, List[str]]:
         """
         Translate connector index in electrode position file to channel name
         in ecg file.
+
+        Parameters:
+            channel_list : ndarray of type int
+                channel numbers from position file
+            electrode_index : int
+                index of the recording electrode
+            filename : str
+                position file to evaluate channel naming convention
 
         Raises:
             IndexError : If channel indexing does not match a known connector.
@@ -883,10 +930,14 @@ class CartoMap(EPMap):
             import RF and force data
         visitag_to_lesion(visitag_sites)
             convert VisiTag ablation sites to BaseClass Lesion
-
     """
 
-    def __init__(self, name, study_xml, parent=None):
+    def __init__(
+            self,
+            name: str,
+            study_xml: str,
+            parent: Optional['CartoStudy'] = None
+    ) -> None:
         """
         Constructor.
 
@@ -900,7 +951,6 @@ class CartoMap(EPMap):
 
         Returns:
             None
-
         """
 
         super().__init__(name, parent=parent)
@@ -915,7 +965,10 @@ class CartoMap(EPMap):
         self.coloringRangeTable = []
         self.rf = None
 
-    def import_map(self, egm_names_from_pos=False):
+    def import_map(
+            self,
+            egm_names_from_pos: bool
+    ) -> None:
         """
         Load all relevant information for this mapping procedure, import EGM
         recording points, interpolate standard surface parameter maps from
@@ -923,8 +976,10 @@ class CartoMap(EPMap):
         body surface ECGs.
 
         Parameters:
-            egm_names_from_pos : boolean (optional)
-                get names of egm traces from electrode positions
+            egm_names_from_pos : bool
+                If True, EGM electrode names are extracted from positions file.
+                This also returns name and coordinates of the second unipolar
+                channel.
 
         Raises:
             MapAttributeError : If unable to retrieve map attributes from XML
@@ -932,7 +987,6 @@ class CartoMap(EPMap):
 
         Returns:
             None
-
         """
 
         self._import_attributes()
@@ -960,17 +1014,17 @@ class CartoMap(EPMap):
         # build map BSECGs
         self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
 
-    def load_mesh(self):
+    def load_mesh(
+            self
+    ) -> Surface:
         """
-        Load a Carto3 triangulated anatomical shell from file. Overrides
-        BaseClass method.
+        Load a Carto3 triangulated anatomical shell from file.
 
         Raises:
             MeshFileNotFoundError : if mesh file not found
 
         Returns:
-            Surface object
-
+            Surface
         """
 
         log.info('reading Carto3 mesh {}'.format(self.surfaceFile))
@@ -982,9 +1036,13 @@ class CartoMap(EPMap):
         with self.parent.repository.open(mesh_file, mode='rb') as fid:
             return read_mesh_file(fid, encoding=self.parent.encoding)
 
-    def load_points(self, study_tags=None, egm_names_from_pos=False):
+    def load_points(
+            self,
+            study_tags: Optional[List[Tag]] = None,
+            egm_names_from_pos: bool = False
+    ) -> List[CartoPoint]:
         """
-        Load points for Carto3 map. Overrides BaseClass method.
+        Load points for Carto3 map.
 
         EGM names for recording points can be identified by evaluating the
         recording position to get the name of the electrode and comparing it
@@ -992,14 +1050,13 @@ class CartoMap(EPMap):
         stored in a points ECG file is used.
 
         Parameters:
-            study_tags : list of Tag objects
-                to transform tag ID to label
+            study_tags : list of Tag objects (optional)
+                to transform points tag ID to label name
             egm_names_from_pos : boolean (optional)
                 Get EGM names from recording positions. (default is False)
 
         Returns:
             list of CartoPoints objects
-
         """
 
         log.info('import EGM points')
@@ -1019,11 +1076,13 @@ class CartoMap(EPMap):
         if not map_item:
             log.warning('no map with name {} found in study XML'
                         .format(self.name))
-            return -1
+            return []
+
         if len(map_item) > 1:
             log.warning('multiple maps with name {} found in study XML'
                         .format(self.name))
-            return -1
+            return []
+
         map_item = map_item[0]
 
         all_points_file = self.parent.repository.join(
@@ -1032,7 +1091,7 @@ class CartoMap(EPMap):
         if not self.parent.repository.is_file(all_points_file):
             log.warning('unable to find export overview of all points {}'
                         .format(all_points_file))
-            return -1
+            return []
 
         with self.parent.repository.open(all_points_file, mode='rb') as fid:
             root = ET.parse(fid).getroot()
@@ -1044,7 +1103,8 @@ class CartoMap(EPMap):
                                 self.name,
                                 all_points_file)
                         )
-            return -1
+            return []
+
         point_files = {}
         for i, point in enumerate(root.findall('Point')):
             point_files[point.get('ID')] = point.get('File_Name')
@@ -1055,7 +1115,7 @@ class CartoMap(EPMap):
         n_points = int(map_item.find('CartoPoints').get('Count'))
         if not len(point_files) == n_points:
             log.warning('number of points is not equal number of points files')
-            return -1
+            return []
 
         log.info('loading {} points'.format(n_points))
         for i, point in enumerate(
@@ -1106,20 +1166,22 @@ class CartoMap(EPMap):
 
         return points
 
-    def import_lesions(self, directory=None):
+    def import_lesions(
+            self,
+            directory: str = ''
+    ) -> None:
         """
         Import VisiTag lesion data.
 
         Note: More than one RF index can be stored per ablation site.
 
         Parameters:
-            directory : str
+            directory : str (optional)
                 path to VisiTag data. If None, standard location
                 ../<studyRepository>/VisiTagExport is used
 
         Returns:
             None
-
         """
 
         # VisiTag data is stored study-wise, so check parent for data.
@@ -1133,10 +1195,13 @@ class CartoMap(EPMap):
 
         self.lesions = self.parent.visitag.to_lesions()
 
-    def build_map_ecg(self, ecg_names=None,
-                      method=None,
-                      reload_data=False,
-                      *args, **kwargs):
+    def build_map_ecg(
+            self,
+            ecg_names: Optional[Union[str, List[str]]] = None,
+            method: Optional[Union[str, List[str]]] = None,
+            reload_data: bool = False,
+            *args, **kwargs
+    ) -> List[BodySurfaceECG]:
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
@@ -1150,7 +1215,7 @@ class CartoMap(EPMap):
         only once.
 
         Parameters:
-            ecg_names : list of str
+            ecg_names : str, list of str
                 ECG names to build. If not specified, 12-lead ECG is used
             method : str, list of str (optional)
                 Method to use. Options are ['median', 'ccf', 'mse']
@@ -1163,7 +1228,6 @@ class CartoMap(EPMap):
 
         Returns
             list of BodySurfaceECG
-
         """
 
         if not ecg_names:
@@ -1176,6 +1240,9 @@ class CartoMap(EPMap):
 
         if not method:
             method = ['median', 'mse', 'ccf']
+
+        if isinstance(method, str):
+            method = [method]
 
         log.info('map {}: building representative ECGs: {}'
                  .format(self.name, ecg_names))
@@ -1240,8 +1307,6 @@ class CartoMap(EPMap):
                 ref = point.refAnnotation
 
         # build representative bsecg trace
-        if isinstance(method, str):
-            method = [method]
         repr_ecg = []
 
         for meth in method:
@@ -1457,8 +1522,15 @@ class CartoMap(EPMap):
 
         return
 
-    def import_rf_data(self):
-        """Load map associated RF data and RF contact forces."""
+    def load_rf_data(
+            self
+    ) -> MapRF:
+        """
+        Load map associated RF data and RF contact forces.
+
+        Returns:
+            RF data : MapRF
+        """
 
         log.info('loading RF and RF contact force data for map {}'
                  .format(self.name))
@@ -1605,13 +1677,14 @@ class CartoMap(EPMap):
 
         return MapRF(force=rf_force, ablation_parameters=rf_abl)
 
-    def _import_attributes(self):
+    def _import_attributes(
+            self
+    ) -> None:
         """
         Load info and file(s) associated with this map from study XML.
 
         Returns:
             None
-
         """
 
         xml_file = self.parent.repository.join(self.studyXML)
@@ -1668,10 +1741,13 @@ class CartoMap(EPMap):
             )
         self.coloringRangeTable = colorRangeTable
 
-        return True
+        return
 
     @staticmethod
-    def _sort_rf_filenames(filenames, order='ascending'):
+    def _sort_rf_filenames(
+            filenames: List[str],
+            order: str = 'ascending'
+    ) -> List[str]:
         """Sort a list of filenames."""
 
         names = [x.lower() for x in filenames]
@@ -1713,8 +1789,8 @@ class CartoStudy(EPStudy):
             mapping system settings, i.e. color tables, tag names, etc.
         visitag : Visitag
             ablation sites and ablation grid information
-        paso : Paso
-            PaSo data for VT template matching
+        paso : PaSo
+            VT template matching data
         environment : Not Implemented
         externalObjects : Not Implemented
 
@@ -1741,7 +1817,12 @@ class CartoStudy(EPStudy):
 
     """
 
-    def __init__(self, study_repo, pwd='', encoding='cp1252'):
+    def __init__(
+            self,
+            study_repo: str,
+            pwd: str = '',
+            encoding: str = 'cp1252'
+    ) -> None:
         """
         Constructor.
 
@@ -1778,10 +1859,14 @@ class CartoStudy(EPStudy):
         self.visitag = Visitag()
         self.paso = None
 
-    def import_study(self):
+    def import_study(
+            self
+    ) -> None:
         """
         Load study details and basic information from study XML.
-        Overrides BaseClass method.
+
+        Returns:
+            None
         """
 
         # locate study XML
@@ -1903,8 +1988,12 @@ class CartoStudy(EPStudy):
         self.mapNames = map_names
         self.mapPoints = map_points
 
-    def import_maps(self, map_names=None, egm_names_from_pos=False,
-                    *args, **kwargs):
+    def import_maps(
+            self,
+            map_names: Optional[Union[str, List[str]]] = None,
+            egm_names_from_pos: bool = False,
+            *args, **kwargs
+    ) -> None:
         """
         Import a Carto map. Extends BaseClass method.
 
@@ -1920,7 +2009,7 @@ class CartoStudy(EPStudy):
         stored in a points ECG file is used.
 
         Parameters:
-            map_names : string or list (optional)
+            map_names : list of str (optional)
                 name or list of map names to import. If no name is
                 specified, all maps are loaded (default).
             egm_names_from_pos : boolean (optional)
@@ -1931,7 +2020,6 @@ class CartoStudy(EPStudy):
 
         Returns:
             None
-
         """
 
         # do some pre-import checks
@@ -1951,7 +2039,10 @@ class CartoStudy(EPStudy):
 
         return
 
-    def import_visitag_sites(self, directory=None):
+    def import_visitag_sites(
+            self,
+            directory: str = ''
+    ) -> None:
         """
         Load VisiTag ablation sites data.
 
@@ -1968,7 +2059,6 @@ class CartoStudy(EPStudy):
 
         Returns:
             None
-
         """
 
         visi_dir = directory if directory else 'VisiTagExport'
@@ -1983,7 +2073,7 @@ class CartoStudy(EPStudy):
                 log.debug('reloading Visitag sites')
             elif user_input.lower() in ('n', 'no'):
                 log.debug('reload canceled ')
-                return self.visitag.sites
+                return
             else:
                 # ... error handling ...
                 log.warning('Error: Input {} unrecognised.'.format(user_input))
@@ -2075,7 +2165,10 @@ class CartoStudy(EPStudy):
 
         self.visitag.sites = sites
 
-    def import_paso(self, directory=''):
+    def import_paso(
+            self,
+            directory: str = ''
+    ) -> None:
         """
         Load PaSo tables.
 
@@ -2167,7 +2260,10 @@ class CartoStudy(EPStudy):
             correlations=correlations
         )
 
-    def import_visitag_grid(self, directory=None):
+    def import_visitag_grid(
+            self,
+            directory: str = ''
+    ) -> None:
         """
         Import VisiTag ablation grid data.
 
@@ -2396,7 +2492,12 @@ class CartoStudy(EPStudy):
         self.visitag.grid = grid_sites
 
     @classmethod
-    def load(cls, file: str, repository_path: str = '', password: str = ''):
+    def load(
+            cls,
+            file: str,
+            repository_path: str = '',
+            password: str = ''
+    ) -> TCartoStudy:
         """
         Load study from file. Overrides BaseClass method.
 
@@ -2417,8 +2518,7 @@ class CartoStudy(EPStudy):
             TypeError : If file is not Carto3
 
         Returns:
-            None
-
+            CartoStudy
         """
 
         log.debug('loading study')
@@ -2611,7 +2711,11 @@ class CartoStudy(EPStudy):
 
         return study
 
-    def save(self, filepath: str = '', keep_ecg: bool = False):
+    def save(
+            self,
+            filepath: str = '',
+            keep_ecg: bool = False
+    ) -> str:
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -2808,15 +2912,17 @@ class CartoStudy(EPStudy):
                                   labels_to_add=surf_labels
                                   )
 
-    def rfi_from_visitag_grid(self):
+    def rfi_from_visitag_grid(
+            self
+    ) -> None:
         """
         Calculate RF index for VisiTag sites from VisiTag grid data.
 
-        RFI values are added to the study's VisiTag sites data
+        RFI values are added to the study's VisiTag sites data with name
+        "CustomRFI".
 
         Returns:
             None
-
         """
 
         log.info('(re)calculating RF index...')
@@ -2846,7 +2952,11 @@ class CartoStudy(EPStudy):
             else:
                 site.add_rf_index(grid[0].calc_rfi())
 
-    def is_root_valid(self, root_dir=None, pwd=''):
+    def is_root_valid(
+            self,
+            root_dir: str = '',
+            pwd: str = ''
+    ) -> bool:
         """
         Check if study root is valid. Overrides BaseClass method.
 
@@ -2858,7 +2968,6 @@ class CartoStudy(EPStudy):
 
         Returns:
             bool : valid or not
-
         """
 
         log.info('checking if study root{}is valid'
@@ -2877,7 +2986,10 @@ class CartoStudy(EPStudy):
 
         return False
 
-    def set_repository(self, root_dir):
+    def set_repository(
+            self,
+            root_dir: str
+    ) -> bool:
         """
         Change path to root directory. Overrides BaseClass method.
         If new root directory is invalid, it is not changed.
@@ -2888,7 +3000,6 @@ class CartoStudy(EPStudy):
 
         Returns:
             bool : successful or not
-
         """
 
         log.info('setting study root to new directory {}'.format(root_dir))
@@ -2920,10 +3031,12 @@ class CartoStudy(EPStudy):
         return True
 
     @staticmethod
-    def locate_study_xml(repository,
-                         pwd='',
-                         regex=r'^((?!Export).)*.xml$',
-                         encoding='cp1252'):
+    def locate_study_xml(
+            repository: Repository,
+            pwd: str = '',
+            regex: str = r'^((?!Export).)*.xml$',
+            encoding: str = 'cp1252'
+    ) -> Optional[dict]:
         """
         Locate study XML in Carto repository. A file is considered valid if
         it starts with '<Study name='.
@@ -2938,13 +3051,12 @@ class CartoStudy(EPStudy):
             encoding : str (optional)
 
         Raises:
-            TypeError
+            TypeError : if study repository is not of type Repository
 
         Returns:
             dict
                 'xml' : filepath to XML file
                 'name' : study name retrieved from XML
-
         """
 
         log.debug('searching for Study XML in: {}'.format(repository))

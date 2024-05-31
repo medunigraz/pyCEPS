@@ -488,7 +488,7 @@ def execute_commands(args):
                               egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
-                study.maps[map_name].import_lesions(directory=None)
+                study.maps[map_name].import_lesions(directory='')
             data_changed = True
 
     # work out which map(s) to process

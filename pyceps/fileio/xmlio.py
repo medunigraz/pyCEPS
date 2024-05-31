@@ -16,6 +16,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import List, Union, Optional
 import xml.etree.ElementTree as ET
 import base64
 import numpy as np
@@ -23,10 +24,12 @@ import numpy as np
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
 
 
-def xml_add_binary_numpy(root: ET.Element,
-                         name: str,
-                         data,
-                         **kwargs):
+def xml_add_binary_numpy(
+        root: ET.Element,
+        name: str,
+        data: np.ndarray,
+        **kwargs
+) -> None:
     """
     Create etree DataArray with binary numpy data.
 
@@ -80,10 +83,12 @@ def xml_add_binary_numpy(root: ET.Element,
         element.set(key, value)
 
 
-def xml_add_binary_trace(root: ET.Element,
-                         name: str,
-                         data,
-                         **kwargs):
+def xml_add_binary_trace(
+        root: ET.Element,
+        name: str,
+        data: Union[Trace, List[Trace]],
+        **kwargs
+) -> None:
     """
     Create etree Trace with binary data.
 
@@ -151,9 +156,11 @@ def xml_add_binary_trace(root: ET.Element,
                              )
 
 
-def xml_add_binary_bsecg(root: ET.Element,
-                         data,
-                         **kwargs):
+def xml_add_binary_bsecg(
+        root: ET.Element,
+        data: List[BodySurfaceECG],
+        **kwargs
+) -> None:
     """Create etree BodySurfaceECG with binary data.
 
     XML attributes:
@@ -206,13 +213,18 @@ def xml_add_binary_bsecg(root: ET.Element,
         xml_add_binary_trace(item, trace.method, trace.traces)
 
 
-def xml_load_binary_data(element: ET.Element):
+def xml_load_binary_data(
+        element: ET.Element
+) -> tuple[Optional[str], Optional[np.ndarray]]:
     """
     Load binary data from etree DataArray.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        NotImplementedError : if data format is in XML is not supported
 
     Returns:
         name : str
@@ -238,13 +250,18 @@ def xml_load_binary_data(element: ET.Element):
     return name, data
 
 
-def xml_load_binary_trace(element: ET.Element):
+def xml_load_binary_trace(
+        element: ET.Element
+) -> tuple[Optional[str], Optional[Union[Trace, List[Trace]]]]:
     """
     Load binary Traces from etree element.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        ImportError : if number of expected traces does not match data
 
     Returns:
         name : str
@@ -271,6 +288,11 @@ def xml_load_binary_trace(element: ET.Element):
                      )
         traces.append(t)
 
+    if not len(traces) == count:
+        raise ImportError('expected {} traces, imported {}'
+                          .format(count, len(traces))
+                          )
+
     if len(traces) > 1:
         traces = [[row[i] for row in traces]
                   for i in range(max(len(r) for r in traces))]
@@ -280,13 +302,18 @@ def xml_load_binary_trace(element: ET.Element):
     return trace_name, traces
 
 
-def xml_load_binary_bsecg(element: ET.Element):
+def xml_load_binary_bsecg(
+        element: ET.Element
+) -> List[BodySurfaceECG]:
     """
     Load binary BodySurfaceECG object from etree element.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        ImportError : if number of expected BSECGs does not match data
 
     Returns:
         list of BodySurfaceECG
@@ -303,5 +330,10 @@ def xml_load_binary_bsecg(element: ET.Element):
                            traces=traces
                            )
                      )
+
+    if not len(bsecg) == count:
+        raise ImportError('expected {} BSEG(s), imported {}'
+                          .format(count, len(bsecg))
+                          )
 
     return bsecg

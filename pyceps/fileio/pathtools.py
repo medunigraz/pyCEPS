@@ -377,7 +377,7 @@ class Repository:
                 folder to append to base name
 
         Returns:
-            str : absolute path
+            path  : str
         """
 
         study_base = self.get_base_string()

@@ -17,7 +17,7 @@
 
 import datetime
 import logging
-from typing import Optional, Union
+from typing import Optional, Union, TypeVar
 import os
 from typing import Iterable, List
 import numpy as np
@@ -30,7 +30,7 @@ except PackageNotFoundError:
     PYCEPS_VERSION = '0.0.0dev'
 
 from pyceps.fileio.pathtools import Repository
-from pyceps.datatypes.surface import SurfaceSignalMap
+from pyceps.datatypes.surface import Surface, SurfaceSignalMap
 from pyceps.fileio import FileWriter
 from pyceps.fileio.xmlio import (xml_add_binary_numpy,
                                  xml_add_binary_trace,
@@ -41,6 +41,9 @@ from pyceps.interpolation import (inverse_distance_weighting,
                                   )
 from pyceps.datatypes.signals import Trace
 from pyceps.visualize import get_dash_app
+
+
+TEPStudy = TypeVar('TEPStudy', bound='EPStudy')  # workaround to type hint self
 
 
 log = logging.getLogger(__name__)
@@ -76,6 +79,10 @@ class EPPoint:
         egmUni : Trace
             unipolar EGm trace(s). If supported by the mapping system,
             two unipolar traces are stored
+        uniX : ndarray (3, )
+            cartesian coordinates of the second unipolar recording electrode
+            NOTE: coordinates of second unipolar electrode are same as recX if
+            position cannot be determined
         egmRef : Trace
             reference trace
         ecg : list of Trace
@@ -88,9 +95,12 @@ class EPPoint:
 
     """
 
-    def __init__(self, name,
-                 coordinates=np.full(3, np.nan, dtype=np.float32),
-                 parent=None):
+    def __init__(
+            self,
+            name: str,
+            coordinates: np.ndarray = np.full(3, np.nan, dtype=np.float32),
+            parent: Optional['EPMap'] = None
+    ) -> None:
         """
         Constructor.
 
@@ -135,27 +145,40 @@ class EPPoint:
         self.impedance = np.nan
         self.force = np.nan
 
-    def import_point(self, *args, **kwargs):
+    def import_point(self, *args, **kwargs) -> None:
         """Import relevant data."""
         raise NotImplementedError
 
-    def is_valid(self):
+    def is_valid(self) -> bool:
         """Check if this point is valid."""
         raise NotImplementedError
 
-    def load_ecg(self, channel_names=None, reload=False, *args, **kwargs):
+    def load_ecg(
+            self,
+            channel_names: Optional[Union[str, List[str]]] = None,
+            reload: bool = False,
+            *args, **kwargs
+    ) -> Optional[List[Trace]]:
         """Import ECG data for this point."""
         raise NotImplementedError
 
-    def get_ecg_names(self) -> List[str]:
+    def get_ecg_names(
+            self
+    ) -> List[str]:
         """Return names of ECG channels which were already loaded."""
         return [t.name for t in self.ecg]
 
-    def get_ecg_traces(self, ecg_names: List[str]) -> List[Trace]:
+    def get_ecg_traces(
+            self,
+            ecg_names: List[str]
+    ) -> List[Trace]:
         """Return subset of ECG traces."""
         return [t for t in self.ecg if t.name in ecg_names]
 
-    def is_ecg_data_required(self, channel_names: List[str]) -> bool:
+    def is_ecg_data_required(
+            self,
+            channel_names: List[str]
+    ) -> bool:
         """Check if ECG data must be loaded or is already imported."""
         return not set(channel_names).issubset(self.get_ecg_names())
 
@@ -231,10 +254,13 @@ class EPMap:
             and .dat)
         get_rfi_names(return_counts=False)
             returns the names of RFI parameters stored in ablation data.
-
     """
 
-    def __init__(self, name, parent=None):
+    def __init__(
+            self,
+            name: str,
+            parent: Optional['EPStudy'] = None
+    ) -> None:
         """
         Constructor.
 
@@ -260,7 +286,10 @@ class EPMap:
         self.bsecg = []
         self.lesions = None
 
-    def get_valid_points(self, return_invalid=False):
+    def get_valid_points(
+            self,
+            return_invalid: bool = False
+    ) -> Union[List[EPPoint], tuple[List[EPPoint], List[EPPoint]]]:
         """
         Get valid points for this map.
 
@@ -269,7 +298,7 @@ class EPMap:
                 return invalid points as well
 
         Returns:
-            list of CartoPoint
+            list of EPPoint
             tuple (valid, invalid) if return_invalid is True.
         """
 
@@ -280,19 +309,19 @@ class EPMap:
                 [point for point in self.points if not point.is_valid()]
                 )
 
-    def import_map(self, *args, **kwargs):
+    def import_map(self, *args, **kwargs) -> None:
         """Import all relevant data."""
         raise NotImplementedError
 
-    def load_mesh(self, *args, **kwargs):
+    def load_mesh(self, *args, **kwargs) -> Surface:
         """Load triangulated representation of the anatomical shell."""
         raise NotImplementedError
 
-    def load_points(self, *args, **kwargs):
+    def load_points(self, *args, **kwargs) -> List[EPPoint]:
         """Load mapping points recorded during mapping procedure."""
         raise NotImplementedError
 
-    def import_lesions(self, *args, **kwargs):
+    def import_lesions(self, *args, **kwargs) -> None:
         """Import ablation data for mapping procedure."""
         raise NotImplementedError
 
@@ -303,7 +332,10 @@ class EPMap:
         """Build/Load body surface ECGs for this mapping procedure."""
         raise NotImplementedError
 
-    def interpolate_data(self, which):
+    def interpolate_data(
+            self,
+            which: str
+    ) -> None:
         """
         Create surface parameter maps by interpolating EGM data on mesh
         surface points.
@@ -1013,7 +1045,25 @@ class EPMap:
             writer.dump(basename + '.' + name + '.diameter.dat', np.array(d))
             writer.dump(basename + '.' + name + '.diameter.dat_t', np.array(d))
 
-    def resolve_export_folder(self, output_folder=''):
+    def resolve_export_folder(
+            self,
+            output_folder=''
+    ) -> str:
+        """
+        Build valid path for file export. All files are exported to a folder
+        with the map's name.
+
+        If not output folder is specified, standard export location relative
+        to study root is returned.
+        If output folder does not exist, it is created.
+
+        Parameters:
+            output_folder : str (optional)
+
+        Returns:
+            path : str
+        """
+
         # append map name to requested output folder
         output_folder = os.path.join(output_folder, self.name)
 
@@ -1084,7 +1134,13 @@ class EPStudy:
 
     EAM_SYSTEMS = ['carto3', 'precision']
 
-    def __init__(self, system, study_repo, pwd='', encoding='cp1252'):
+    def __init__(
+            self,
+            system: str,
+            study_repo: str,
+            pwd: str = '',
+            encoding: str = 'cp1252'
+    ) -> None:
         """
         Constructor.
 
@@ -1103,6 +1159,8 @@ class EPStudy:
             TypeError : if study_repo is not of type string
             FileExistsError : if study file or folder does not exist
 
+        Returns:
+            None
         """
 
         if system not in self.EAM_SYSTEMS:
@@ -1123,10 +1181,14 @@ class EPStudy:
         # additional meshes, i.e. from CT data
         self.meshes = None
 
-    def import_study(self):
+    def import_study(self) -> None:
         raise NotImplementedError
 
-    def import_maps(self, map_names=None, *args, **kwargs):
+    def import_maps(
+            self,
+            map_names: Optional[Union[str, List[str]]] = None,
+            *args, **kwargs
+    ) -> List[str]:
         """
         Pre-import checks. If a map is already part of the study user
         interaction is required to reload the study or to skip import.
@@ -1137,17 +1199,17 @@ class EPStudy:
                 the map names to import. Only valid map names, i.e. the
                 names must be listed in mapNames attribute, are imported
 
+        Raises:
+            ValueError : if command line input is invalid
+
         Returns:
             map_names : list
                 valid names of maps to import
-
-        Raises:
-            ValueError : if command line input is invalid
         """
 
         if not self.mapNames:
             log.warning('No study info was found. Load study structure first!')
-            return -1
+            return []
 
         if map_names and not issubclass(type(map_names), Iterable):
             map_names = [map_names]
@@ -1187,25 +1249,34 @@ class EPStudy:
 
         return map_names
 
-    def export_additional_meshes(self, *args, **kwargs):
+    def export_additional_meshes(self, *args, **kwargs) -> None:
         raise NotImplementedError
 
-    def is_root_valid(self, root_dir=None):
+    def is_root_valid(self, root_dir: str = '') -> bool:
         raise NotImplementedError
 
-    def set_repository(self, root_dir):
+    def set_repository(self, root_dir: str) -> bool:
         raise NotImplementedError
 
     @classmethod
-    def load(cls, file: str, repository_path: str = '', password: str = ''):
+    def load(
+            cls,
+            file: str,
+            repository_path: str = '',
+            password: str = ''
+    ) -> TEPStudy:
         """Load study object from .pyceps archive."""
         raise NotImplementedError
 
-    def list_maps(self, minimal=False):
+    def list_maps(
+            self,
+            minimal=False
+    ) -> tuple[List[tuple[str, int]], List[tuple[str, int]]]:
         """
         Return names of maps in this study.
 
         Map names are also added to logger for command line display.
+
         Parameter minimal determines format: If True only map names are
         listed, if False more detailed info is sent to logger, i.e. all map
         names and which ones were already imported.
@@ -1215,8 +1286,9 @@ class EPStudy:
                 Sets format of logger message
 
         Returns:
-             list of tuples
-                map names and number of egm points for all and imported maps
+             tuple of list of tuples
+                first entry are names and points of ALL maps in study
+                second entry are names and points of IMPORTED maps
         """
 
         all_maps = ['{} ({} points)'.format(m, p)
@@ -1239,18 +1311,31 @@ class EPStudy:
                  if m in self.maps]
                 )
 
-    def imported_maps(self):
+    def imported_maps(
+            self
+    ) -> List[str]:
         """Get names of maps that were already imported."""
 
         return list(self.maps.keys())
 
-    def build_export_basename(self, folder_name):
-        """Build and create (if necessary) output folder for study data.
+    def build_export_basename(
+            self,
+            folder_name: str
+    ) -> str:
+        """
+        Build and create (if necessary) output folder for study data.
 
         If study root points to the folder containing <study>.xml the export
         folder is created in folder above root.
         If study root points to a .zip or .pkl file (invalid root) the export
         folder is created in the same folder as root.
+
+        Parameters:
+            folder_name : str
+                build path to this folder, relative to study root
+
+        Returns:
+            path : str
         """
 
         export_folder = self.repository.build_export_basename(folder_name)
@@ -1261,7 +1346,11 @@ class EPStudy:
 
         return export_folder
 
-    def save(self, filepath: str = '', keep_ecg: bool = False):
+    def save(
+            self,
+            filepath: str = '',
+            keep_ecg: bool = False
+    ) -> tuple[Optional[ET.Element], str]:
         """
         Save study object as .pyceps archive.
         Note: File is only created if at least one map was imported!
@@ -1402,17 +1491,46 @@ class EPStudy:
 
         return root, filepath
 
-    def visualize(self, bgnd=None):
-        """Visualize the study in dash."""
+    def visualize(
+            self,
+            bgnd: Optional[str] = None
+    ) -> None:
+        """
+        Visualize the study in dash.
+
+        Parameters:
+            bgnd : str (optional)
+                dash VTK-view background color as rgb string
+
+        Returns:
+            None
+        """
 
         log.info('visualizing study')
         log.warning('This will lock the console!')
 
         app = get_dash_app(self, bgnd=bgnd)
         webbrowser.open_new("http://127.0.0.1:8050")
-        app.run_server(debug=False, use_reloader=False)
+        app.run_server(debug=True, use_reloader=False)
 
-    def resolve_export_folder(self, output_folder=''):
+    def resolve_export_folder(
+            self,
+            output_folder: str = ''
+    ) -> str:
+        """
+        Build valid path for file export.
+
+        If not output folder is specified, standard export location relative
+        to study root is returned.
+        If output folder does not exist, it is created.
+
+        Parameters:
+            output_folder : str (optional)
+
+        Returns:
+            path : str
+        """
+
         if not output_folder:
             output_folder = self.build_export_basename(output_folder)
         else:

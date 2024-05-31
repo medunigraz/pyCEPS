@@ -263,7 +263,7 @@ class Surface:
 
     def has_points(
             self
-    ) -> int:
+    ) -> bool:
         """Check if there are any vertices/faces in this surface."""
 
         return len(self.X) > 0

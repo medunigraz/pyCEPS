@@ -230,7 +230,7 @@ class PrecisionMap(EPMap):
         self.ablationSites = []
 
         # load data
-        self.surface = self.load_mesh()
+        self.surface = self.import_mesh()
         self.points = self.load_points()
         # build surface maps
         self.interpolate_data('act')
@@ -238,7 +238,7 @@ class PrecisionMap(EPMap):
         # self.interpolate_data('uni')
         self.ecg = self.build_map_ecg()
 
-    def load_mesh(self, *args, **kwargs):
+    def import_mesh(self, *args, **kwargs):
         """
         Load a Precision mesh from file.
 
