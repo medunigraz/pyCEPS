@@ -141,6 +141,7 @@ class EPPoint:
         self.egmUni = None
         self.egmRef = None
         self.ecg = []
+        self.uniX = np.full(3, np.nan, dtype=np.float32)
 
         self.impedance = np.nan
         self.force = np.nan

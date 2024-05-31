@@ -169,7 +169,6 @@ class CartoPoint(EPPoint):
         self.barDirection = None
         self.tags = tags
         self.ecgFile = ''
-        self.uniX = np.full(3, np.nan, dtype=np.float32)
         self.forceFile = ''
         self.forceData = None
         self.impedanceData = None
@@ -621,7 +620,6 @@ class CartoPoint(EPPoint):
             position_files,
             encoding=encoding
         )
-        uniCoordinates = np.stack((self.recX, xyz_2), axis=-1)
 
         # now check the name of the electrode identified above by
         # comparing with the ECG_Export file
@@ -648,7 +646,7 @@ class CartoPoint(EPPoint):
                  'ref': egm_names['uni1']
                  }
 
-        return names, uniCoordinates
+        return names, xyz_2
 
     def _find_electrode_at_pos(
             self,
