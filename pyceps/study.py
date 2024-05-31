@@ -622,37 +622,38 @@ class EPMap:
         writer = FileWriter()
 
         if "UNI" in which:
-            data = [point.uniVoltage for point in points]
-            dat_file = basename + '.ptdata.UNI.pc.dat'
-            writer.dump(dat_file, data)
-            log.info('exported point data to {}'.format(dat_file))
+            data = np.array([point.uniVoltage for point in points])
+            dat_file = '{}.ptdata.UNI.pc.dat'.format(basename)
+            f = writer.dump(dat_file, data)
+            log.info('exported point data to {}'.format(f))
 
         if "BIP" in which:
-            data = [point.bipVoltage for point in points]
-            dat_file = basename + '.ptdata.BIP.pc.dat'
-            writer.dump(dat_file, data)
-            log.info('exported point data to {}'.format(dat_file))
+            data = np.array([point.bipVoltage for point in points])
+            dat_file = '{}.ptdata.BIP.pc.dat'.format(basename)
+            f = writer.dump(dat_file, data)
+            log.info('exported point data to {}'.format(f))
 
         if "LAT" in which:
-            data = [point.latAnnotation - point.refAnnotation
-                    for point in points]
-            dat_file = basename + '.ptdata.LAT.pc.dat'
-            writer.dump(dat_file, data)
-            log.info('exported point data to {}'.format(dat_file))
+            data = np.array([point.latAnnotation - point.refAnnotation
+                             for point in points
+                             ])
+            dat_file = '{}.ptdata.LAT.pc.dat'.format(basename)
+            f = writer.dump(dat_file, data)
+            log.info('exported point data to {}'.format(f))
 
         if "IMP" in which:
-            data = [point.impedance for point in points]
+            data = np.array([point.impedance for point in points])
             if not np.isnan(data).all():
-                dat_file = basename + '.ptdata.IMP.pc.dat'
-                writer.dump(dat_file, data)
-                log.info('exported point data to {}'.format(dat_file))
+                dat_file = '{}.ptdata.IMP.pc.dat'.format(basename)
+                f = writer.dump(dat_file, data)
+                log.info('exported point data to {}'.format(f))
 
         if "FRC" in which:
-            data = [point.force for point in points]
+            data = np.array([point.force for point in points])
             if not np.isnan(data).all():
-                dat_file = basename + '.ptdata.FRC.pc.dat'
-                writer.dump(dat_file, data)
-                log.info('exported point data to {}'.format(dat_file))
+                dat_file = '{}.ptdata.FRC.pc.dat'.format(basename)
+                f = writer.dump(dat_file, data)
+                log.info('exported point data to {}'.format(f))
 
         return
 

@@ -1417,24 +1417,25 @@ class CartoMap(EPMap):
         # export data
         writer = FileWriter()
 
-        data = [point.name for point in points]
-        dat_file = basename + '.ptdata.NAME.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point names to {}'.format(dat_file))
+        data = np.array([point.name for point in points])
+        dat_file = '{}.ptdata.NAME.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point names to {}'.format(f))
 
-        data = [point.refAnnotation for point in points]
-        dat_file = basename + '.ptdata.REF.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point reference annotation to {}'.format(dat_file))
+        data = np.array([point.refAnnotation for point in points])
+        dat_file = '{}.ptdata.REF.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point reference annotation to {}'.format(f))
 
-        data = [point.woi[0] for point in points]
-        dat_file = basename + '.ptdata.WOI_START.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point WOI (start) to {}'.format(dat_file))
-        data = [point.woi[1] for point in points]
-        dat_file = basename + '.ptdata.WOI_END.pc.dat'
-        writer.dump(dat_file, data)
-        log.info('exported point WOI (end) to {}'.format(dat_file))
+        data = np.array([point.woi[0] for point in points])
+        dat_file = '{}.ptdata.WOI_START.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point WOI (start) to {}'.format(f))
+
+        data = np.array([point.woi[1] for point in points])
+        dat_file = '{}.ptdata.WOI_END.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point WOI (end) to {}'.format(f))
 
         return
 
