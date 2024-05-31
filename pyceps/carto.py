@@ -2322,13 +2322,13 @@ class CartoStudy(EPStudy):
         cols = get_col_idx_from_header(abl_site_hdr, 'SiteIndex')
         site_index = abl_site_data[:, cols].astype(int).ravel()
         cols = get_col_idx_from_header(abl_site_hdr, 'Session')
-        session = abl_site_data[:, cols].astype(int).ravel()
+        session = abl_site_data[:, cols].astype(int).ravel().tolist()
         cols = get_col_idx_from_header(abl_site_hdr, 'FirstPosTimeStamp')
-        first_pos_tstamp = abl_site_data[:, cols].astype(int).ravel()
+        first_pos_tstamp = abl_site_data[:, cols].astype(int).ravel().tolist()
         cols = get_col_idx_from_header(abl_site_hdr, 'FirstPosPassedFilterTimeStamp')
-        first_pos_passed_tstamp = abl_site_data[:, cols].astype(int).ravel()
+        first_pos_passed_tstamp = abl_site_data[:, cols].astype(int).ravel().tolist()
         cols = get_col_idx_from_header(abl_site_hdr, 'LastPosTimeStamp')
-        last_pos_tstamp = abl_site_data[:, cols].astype(int).ravel()
+        last_pos_tstamp = abl_site_data[:, cols].astype(int).ravel().tolist()
 
         log.info('found {} ablation sites'.format(n_sites))
 
@@ -2397,7 +2397,7 @@ class CartoStudy(EPStudy):
         force_tstamp = force_data[:, cols].astype(int).ravel()
 
         grid_sites = []
-        for i, site in enumerate(site_index):
+        for i, site in enumerate(site_index.tolist()):
             # update progress bar
             console_progressbar(
                 i+1, n_sites,
