@@ -612,7 +612,7 @@ class CartoPoint(EPPoint):
         position_files = []
         for connector in root.find('Positions').findall('Connector'):
             connector_file = list(connector.attrib.values())[0]
-            if connector_file.lower().endswith('ectrode_positions_onannotation.txt'):
+            if 'ectrode_positions_onannotation' in connector_file.lower():
                 position_files.append(connector_file)
 
         bipName, uniName, xyz_2 = self._find_electrode_at_pos(
