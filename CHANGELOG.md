@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- type hints and documentation (Robert Arnold)
+- support for region tags in .elem files (Robert Arnold)
+- support for frames in dat_t and pts_t files (Robert Arnold)
+- CLI argument --keep-ecg to save ECGs to .pyceps (Robert Arnold)
+- import Carto3 PaSo data (Robert Arnold)
+- export files to folder given with --save-study (Robert Arnold)
+- support for frames in dat_t and pts_t files (Robert Arnold)
+- support for region tags in .elem files (Robert Arnold)
+
+### Changed
+
+- some function names for clarity (load vs. import) (Robert Arnold)
+- changed key for BSECG JSON files from "bsecg" to "ecg" (Robert Arnold)
+- py7zr >= 0.21.0 is now required (Robert Arnold)
+
+### Fixed
+
+- wrong time dimension in IGB files (Robert Arnold)
+- fixed connector file names in newer Carto3 export format (Robert Arnold)
+
+### Removed
+
 ## [1.0.1] - 2024-04-16
 
 ### Added
