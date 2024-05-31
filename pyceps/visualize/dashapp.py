@@ -139,7 +139,7 @@ def get_dash_app(study, bgnd=None):
 
         # lesions
         lesion_location = np.asarray(
-            [lesion.X for lesion in p_map.lesions]
+            [site.X for site in p_map.lesions.sites]
         ).ravel().tolist()
 
         # calc center of mass to set camera position right
@@ -226,7 +226,7 @@ def get_dash_app(study, bgnd=None):
                      ]
         has_maps = len(surf_maps) > 0
         has_points = len(p_map.points) > 0
-        has_lesions = len(p_map.lesions) > 0
+        has_lesions = len(p_map.lesions.sites) > 0
 
         # get available RF indexes
         rfi_names = [to_drop_option(name)
@@ -584,15 +584,17 @@ def get_dash_app(study, bgnd=None):
                     )
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
-        rfi = [rfi.value for lesion in p_map.lesions for rfi in lesion.RFIndex
-               if rfi.name == rfi_name]
+        rfi = [rfi.value for site in p_map.lesions.sites
+               for rfi in site.RFIndex
+               if rfi.name == rfi_name
+               ]
 
         # get data range as integers for UI objects
         rng = [np.floor(min(rfi)).astype(int),
                np.ceil(max(rfi)).astype(int)
                ]
 
-        diameter = np.median([lesion.diameter for lesion in p_map.lesions])
+        diameter = np.median([site.diameter for site in p_map.lesions.sites])
 
         # update glyph representation
         lesion_glyphs_state['radius'] = diameter / 2
