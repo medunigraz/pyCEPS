@@ -2533,7 +2533,14 @@ class CartoStudy(EPStudy):
 
         # create empty class instance
         repo = root.find('Repository')
-        study = cls(study_repo=repo.get('base'),
+        base_path = repo.get('base')
+        if not os.path.exists(base_path) and not os.path.isfile(base_path):
+            log.warning('repository path save in pyCEPS file can not be '
+                        'reached!\n'
+                        'Trying to initialize with file location...')
+            base_path = file
+
+        study = cls(base_path,
                     pwd=password,
                     encoding=repo.get('encoding'))
 
@@ -2977,7 +2984,12 @@ class CartoStudy(EPStudy):
             # root saved in study is valid, nothing to do
             return True
         elif root_dir:
-            tmp_root = Repository(root_dir, pwd=pwd)
+            try:
+                tmp_root = Repository(root_dir, pwd=pwd)
+            except FileNotFoundError:
+                # repository can not be found, so it's invalid
+                return False
+
             if not tmp_root.root:
                 # dummy repo was not initialized properly, so root is invalid
                 return False
