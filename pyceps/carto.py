@@ -2140,9 +2140,9 @@ class CartoStudy(EPStudy):
                             session_index=int(site[q_sites_hdr.index('Session')]),
                             channel_id=int(site[q_sites_hdr.index('ChannelID')]),
                             coordinates=np.array(
-                                [site[sites_hdr.index('X')],
-                                 site[sites_hdr.index('Y')],
-                                 site[sites_hdr.index('Z')]]
+                                [site[q_sites_hdr.index('X')],
+                                 site[q_sites_hdr.index('Y')],
+                                 site[q_sites_hdr.index('Z')]]
                             ).astype(np.float32),
                             avg_force=site[q_sites_hdr.index('AverageForce')],
                             fti=site[q_sites_hdr.index('FTI')],
