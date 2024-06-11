@@ -29,10 +29,9 @@ from argparse import ArgumentParser, Action
 import logging
 import tempfile
 from typing import Tuple
-import xml.etree.ElementTree as ET
 
-from pyceps.fileio.cartoio import CartoStudy
-from pyceps.fileio.precisionio import PrecisionStudy
+from pyceps.carto import CartoStudy
+from pyceps.precision import PrecisionStudy
 
 
 logger = logging.getLogger('pyceps')
@@ -128,7 +127,13 @@ def get_args():
         help='Save study as pyCEPS file.\n'
              'Default location is folder above study root, default name is '
              'study name e.g. <study_root>/../<study_name>.pyceps\n'
-             'Custom location and file name can be given alternatively.'
+             'Custom location and file name can be given alternatively. All '
+             'export files are redirected to this location.'
+    )
+    bio.add_argument(
+        '--keep-ecg',
+        action='store_true',
+        help='Save point ECG data in pyCEPS export file.'
     )
 
     vis = parser.add_argument_group('Visualization')
@@ -323,6 +328,7 @@ def load_study(args):
                                pwd=args.password,
                                encoding=args.encoding)
             study.import_study()
+            study.import_paso()
         elif args.system == 'PRECISION':
             study = PrecisionStudy(args.study_repository,
                                    pwd=args.password,
@@ -346,26 +352,32 @@ def load_study(args):
         # update argument in case of later usage
         args.study_file = study_file
 
-        # now we can load the object
-        try:
-            with open(study_file) as fid:
-                xml_root = ET.parse(fid).getroot()
-        except ET.ParseError:
-            logger.warning('unknown file format, aborting!')
-            return None, args
-
-        # get EAM system
-        system = xml_root.get('system')
-        repo = xml_root.find('Repository')
+        # now we can open the file and try to load the object
+        # read file line-wise, not using eTree for performance reasons
+        with open(study_file, 'r') as fid:
+            line = fid.readline()
+            if not line == '<?xml version="1.0" encoding="utf-8"?>\n':
+                logger.warning('unknown file format, aborting!')
+                return None, args
+            line = fid.readline()
+            try:
+                system = line.split('system="')[1].split('"')[0]
+            except IndexError:
+                logger.warning('unable to determine EAM system from file.\n'
+                               'key "system" not found in line {}'
+                               .format(line))
+                return None, args
 
         if system.lower() == 'carto3':
-            study = CartoStudy(study_repo=repo.get('base'),
-                               pwd=args.password,
-                               encoding=repo.get('encoding'))
-            study.load(study_file, repo_path=args.change_root)
-
+            study = CartoStudy.load(args.study_file,
+                                    password=args.password,
+                                    repository_path=args.change_root
+                                    )
         elif args.system == 'precision':
-            study = PrecisionStudy.load(study_file, root=args.change_root)
+            study = PrecisionStudy.load(args.study_file,
+                                        password=args.password,
+                                        repository_path=args.change_root
+                                        )
 
         else:
             raise KeyError('unknown EAM system specified!')
@@ -386,41 +398,55 @@ def load_study(args):
 def export_map_data(study, map_name, args):
     """Export data for specified maps."""
 
+    # handle explicit export location
+    out_path = ''
+    if args.save_study:
+        out_path = '' if args.save_study == 'DEFAULT' else args.save_study
+    out_path = study.resolve_export_folder(os.path.dirname(out_path))
+
     # save carto mesh
     if args.dump_mesh:
-        study.maps[map_name].export_mesh_carp()
+        study.maps[map_name].export_mesh_carp(out_path)
         surf_maps = study.maps[map_name].surface.get_map_names()
         surf_labels = study.maps[map_name].surface.get_label_names()
-        study.maps[map_name].export_mesh_vtk(maps_to_add=surf_maps,
-                                             labels_to_add=surf_labels)
+        study.maps[map_name].export_mesh_vtk(output_folder=out_path,
+                                             maps_to_add=surf_maps,
+                                             labels_to_add=surf_labels
+                                             )
 
     # dump point data for recording points
     if args.dump_point_data:
-        study.maps[map_name].export_point_data()
-        study.maps[map_name].export_point_info()
+        study.maps[map_name].export_point_data(out_path)
+        study.maps[map_name].export_point_info(out_path)
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:
         study.maps[map_name].export_point_ecg(
+            output_folder=out_path,
             which=(None if args.dump_point_ecgs == 'DEFAULT'
                    else args.dump_point_ecgs)
         )
 
     # dump EGM traces for recording points
     if args.dump_point_egms:
-        study.maps[map_name].export_point_egm()
+        study.maps[map_name].export_point_egm(out_path)
 
     # dump representative ECGs for map
     if args.dump_map_ecgs:
-        study.maps[map_name].export_map_ecg()
+        study.maps[map_name].export_map_ecg(out_path)
 
     # dump surface signal maps to DAT
     if args.dump_surface_maps:
-        study.maps[map_name].export_signal_maps()
+        study.maps[map_name].export_signal_maps(out_path)
 
     # export lesion data
     if args.dump_lesions:
-        study.maps[map_name].export_lesions()
+        study.maps[map_name].export_lesions(out_path)
+
+    # check if additional meshes are part of the study
+    if study.meshes and args.dump_mesh:
+        logger.info('found additional meshes in study, exporting...')
+        study.export_additional_meshes(out_path)
 
 
 def execute_commands(args):
@@ -463,7 +489,7 @@ def execute_commands(args):
                               egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
-                study.maps[map_name].import_lesions(directory=None)
+                study.maps[map_name].import_lesions(directory='')
             data_changed = True
 
     # work out which map(s) to process
@@ -506,11 +532,6 @@ def execute_commands(args):
         logger.info('exporting data for map {}'.format(map_name))
         export_map_data(study, map_name, args)
 
-    # check if additional meshes are part of the study
-    if study.meshes and args.dump_mesh:
-        logger.info('found additional meshes in study, exporting...')
-        study.export_additional_meshes()
-
     # save study
     if not args.save_study and data_changed:
         logger.debug('unsaved changes found!')
@@ -527,7 +548,8 @@ def execute_commands(args):
     pyceps_loc = ''
     if args.save_study:
         pyceps_loc = study.save(None if args.save_study == 'DEFAULT' else
-                                args.save_study)
+                                args.save_study,
+                                keep_ecg=args.keep_ecg)
 
     # redirect log file
     if pyceps_loc:

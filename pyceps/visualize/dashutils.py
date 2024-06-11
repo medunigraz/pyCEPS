@@ -317,6 +317,116 @@ def get_point_egm_figure(point, bgnd='rgb(255, 255, 255)'):
     return fig
 
 
+def get_point_ecg_figure(point, colors, bgnd='rgb(255, 255, 255)'):
+    """
+    Plot surface ECG traces for a Precision Map.
+
+    Parameters:
+         point : EPPoint
+         colors : list of HEX colors
+         bgnd : RGB color (optional)
+            background color of the figure.
+
+    Raises:
+         TypeError : If traces are not Trace objects
+
+    Returns:
+        plotly.go.Figure
+
+    """
+
+    if not len(point.ecg) > 0:
+        return empty_figure(bgnd='rgb(255, 255, 255)')
+
+    ecg = point.ecg
+
+    fig = make_subplots(rows=3, cols=4,
+                        shared_xaxes='all',
+                        shared_yaxes=False,
+                        subplot_titles=[t.name for t in ecg],
+                        )
+
+    # get max y-range in data
+    rng = [min([t.data.min() for t in ecg]),
+           max([t.data.max() for t in ecg])
+           ]
+    # limit range in case of amplifier saturation, etc.
+    rng[0] = max(rng[0], -10.0)
+    rng[1] = min(rng[1], +10.0)
+
+    for i, trace in enumerate(ecg):
+        pos = np.unravel_index(i, (3, 4))
+        t = np.linspace(0, trace.data.shape[0] / trace.fs,
+                        num=trace.data.shape[0],
+                        endpoint=True)
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=trace.data,
+                mode='lines',
+                line=dict(color=colors[0]),
+                name=trace.name,
+                showlegend=False,
+            ),
+            row=pos[0] + 1, col=pos[1] + 1
+        )
+
+    # mark annotation time
+    if not np.isnan(point.refAnnotation):
+        fig.add_vline(
+            x=point.refAnnotation / ecg[0].fs,
+            line_width=1.5,
+            line_dash='dot',
+            line_color='green'
+        )
+
+    # update x-axis properties
+    fig.update_xaxes(title_text='Time (s)', row=3, col=1)
+    fig.update_yaxes(title_text='ECG (mV)', row=3, col=1)
+
+    # update layout
+    # update layout
+    fig.update_layout(title='Point ECGs',
+                      title_x=0.5,
+                      yaxis1={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis2={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis3={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis4={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis5={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis6={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis7={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis8={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis9={'tickformat': '.1f',
+                              'range': rng},
+                      yaxis10={'tickformat': '.1f',
+                               'range': rng},
+                      yaxis11={'tickformat': '.1f',
+                               'range': rng},
+                      yaxis12={'tickformat': '.1f',
+                               'range': rng},
+                      # font_size=10,
+                      # legend=dict(
+                      #     orientation='h',
+                      #     yanchor='bottom',
+                      #     y=1.02,
+                      #     xanchor='right',
+                      #     x=1,
+                      # ),
+                      # showlegend=False,
+                      plot_bgcolor=bgnd,
+                      )
+
+    return fig
+
+
 def get_bsecg_figure(bsecg, colors, bgnd='rgb(255, 255, 255)'):
     """
     Plot surface ECG traces for a Precision Map.
@@ -334,6 +444,9 @@ def get_bsecg_figure(bsecg, colors, bgnd='rgb(255, 255, 255)'):
         plotly.go.Figure
 
     """
+
+    if not len(bsecg) > 0:
+        return empty_figure(bgnd='rgb(255, 255, 255)')
 
     fig = make_subplots(rows=3, cols=4,
                         shared_xaxes='all',
@@ -389,7 +502,7 @@ def get_bsecg_figure(bsecg, colors, bgnd='rgb(255, 255, 255)'):
 
     # update layout
     # update layout
-    fig.update_layout(title='Body Surface ECGs',
+    fig.update_layout(title='Map ECGs',
                       title_x=0.5,
                       yaxis1={'tickformat': '.1f',
                               'range': rng},

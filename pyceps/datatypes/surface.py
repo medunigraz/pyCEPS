@@ -17,13 +17,189 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+from typing import List, Tuple, Optional, Union, TypeVar
 import numpy as np
 from collections import namedtuple
+import xml.etree.ElementTree as ET
 
 from pyceps.fileio.writer import FileWriter
+from pyceps.fileio.xmlio import xml_add_binary_numpy, xml_load_binary_data
 
 
 log = logging.getLogger(__name__)
+
+
+TSurface = TypeVar('TSurface', bound='Surface')  # workaround to type hint self
+
+
+Mesh = namedtuple('Mesh', ['registrationMatrix',
+                           'fileNames'])
+Mesh.__doc__ = """
+A namedtuple representing additional meshes saved with EAM data.
+
+Fields:
+    registrationMatrix : ndarray (4, 4)
+        transformation matrix (scale, rotate, shift)
+    filenames: list of str
+        files containing triangulation data
+"""
+
+
+class SurfaceSignalMap:
+    """A class representing a signal property map.
+
+    Attributes:
+        name : string
+        values : ndarray, (n, 1)
+            explicit second dimension must be given for VTK export
+            compatibility
+        location : string
+            location of data on the mesh
+            Options: 'pointData', 'cellData'
+        description : string (optional)
+            additional information on data
+    """
+
+    def __init__(
+            self, name: str, values: np.ndarray, location: str,
+            description: str = ''
+    ) -> None:
+        """
+        Constructor.
+
+        Parameters:
+            name : str
+                name/description of this map
+            values : ndarray
+                explicit second dimension is added for VTK export!
+            location : str
+                location of data, either 'pointData' or 'cellData'
+            description : str (optional)
+                additional information
+        """
+
+        self.name = name
+        # adjust values dims if necessary
+        try:
+            values.shape[1]
+        except IndexError:
+            np.expand_dims(values, axis=1)
+        self.values = values
+        self.location = location
+        self.description = description
+
+    def to_vtk_dict(
+            self
+    ) -> dict:
+        """Convert class to VTK compatible representation."""
+
+        return {'name': self.name,
+                'values': self.values,
+                'location': self.location
+                }
+
+    def export(
+            self, basename: str
+    ) -> str:
+        """
+        Export surface map data to DAT file.
+
+        Naming Convention:
+            <basename>.map.<surface_map_name>.dat
+
+        Parameters:
+            basename : str
+                path to export file
+
+        Returns:
+            filename : str
+        """
+
+        if basename.endswith('.dat'):
+            basename = basename[:-4]
+
+        filename = basename + '.map.' + self.name + '.dat'
+
+        writer = FileWriter()
+        writer.dump(filename, self.values[:, 0])
+
+        return filename
+
+
+class SurfaceLabel:
+    """A class representing a signal property map.
+
+    Attributes:
+        name : string
+        values : ndarray, (n, 1)
+            explicit second dimension must be given for VTK export
+            compatibility
+        location : string
+            location of data on the mesh
+            Options: 'pointData', 'cellData'
+        description : string (optional)
+            additional information on data
+    """
+
+    def __init__(
+            self, name: str, values: np.ndarray, location: str,
+            description: str = ''
+    ) -> None:
+        """
+        Constructor.
+
+        Parameters:
+            name : str
+                name/description of this surface label
+            values : ndarray
+                explicit second dimension is added for VTK export!
+            location : str
+                location of data, either 'pointData' or 'cellData'
+            description : str (optional)
+                additional information
+        """
+
+        self.name = name
+        self.values = values
+        self.location = location
+        self.description = description
+
+    def to_vtk_dict(
+            self
+    ) -> dict:
+        """Convert class to VTK compatible representation."""
+
+        return {'name': self.name,
+                'values': self.values,
+                'location': self.location
+                }
+
+    def export(
+            self, basename: str
+    ) -> str:
+        """
+        Export surface map data to DAT file.
+
+        Naming Convention:
+            <basename>.<surface_label_name>.dat
+
+        Parameters:
+            basename : str
+                path to export file
+
+        Returns:
+            filename : str
+        """
+
+        if basename.endswith('.dat'):
+            basename = basename[:-4]
+
+        filename = basename + '.' + self.name + '.dat'
+
+        writer = FileWriter()
+        writer.dump(filename, self.values[:, 0])
+
+        return filename
 
 
 class Surface:
@@ -33,7 +209,7 @@ class Surface:
     Attributes:
         X : ndarray (n_vertices, 3)
             mesh vertices coordinates
-        tris : ndarray(n_tris, 3)
+        tris : ndarray (n_tris, 3)
             triangulation
         XNormals : ndarray (n_vertices, 3)
             vertices normals
@@ -42,49 +218,21 @@ class Surface:
         labels : list of SurfaceLabel
         signalMaps : list of SurfaceSignalMap
             clinical system-defined or custom signal property maps
-
-    Methods:
-        has_points()
-            check if there are any vertices/faces in this surface
-        get_map_names()
-            get list of all included surface signal map names
-        get_map(name)
-            get a specific surface signal map
-        get_label_names()
-            get list of all included surface label names
-        get_label(name)
-            get a specific surface label
-        add_signal_maps(maps)
-         add SurfaceSignalMap to surface
-        add_labels(labels)
-            add SurfaceLabel to surface
-        dump_mesh_vtk(filename, maps_to_add=None, labels_to_add=None)
-            export triangulated surface mesh to VTK. SurfaceSignalMap(s) and
-            SurfaceLabel(s) can be added by name
-        dump_mesh_carp(filename)
-            export triangulated surface mesh to openCARP compatible format (
-            .pts and .elem)
-        dump_signal_maps(basename, which=None)
-            export SurfaceSignalMap(s) to openCARP compatible format (.dat)
-        get_closest_vertex(points, limit_to_triangulation=False)
-            find the closest surface vertex to a point or list of points
-            given in cartesian coordinates
-        get_center_of_mass()
-            find center of mass for the triangulated surface mesh
-        get_free_boundary()
-            find indices of vertices add an edge
-        remove_vertices(index)
-            safely remove vertices from triangulated mesh
-        remove_tris(index)
-            safely remove faces from triangulated mesh
-
     """
 
-    def __init__(self, vertices, triangulation,
-                 vertices_normals=np.empty((0, 3), dtype=np.single),
-                 tris_normals=np.empty((0, 3), dtype=np.single),
-                 labels=None,
-                 signal_maps=None):
+    XML_IDENTIFIER = 'Mesh'
+
+    def __init__(
+            self,
+            vertices: np.ndarray,
+            triangulation: np.ndarray,
+            vertices_normals: np.ndarray = np.empty((0, 3), dtype=np.float32),
+            tris_normals: np.ndarray = np.empty((0, 3), dtype=np.float32),
+            labels: Optional[Union[SurfaceLabel, List[SurfaceLabel]]] = None,
+            signal_maps: Optional[
+                Union[SurfaceSignalMap, List[SurfaceSignalMap]]
+            ] = None
+    ) -> None:
         """
         Constructor.
 
@@ -113,19 +261,27 @@ class Surface:
         self.add_signal_maps(signal_maps)
         self.add_labels(labels)
 
-    def has_points(self):
+    def has_points(
+            self
+    ) -> bool:
         """Check if there are any vertices/faces in this surface."""
 
         return len(self.X) > 0
 
-    def get_map_names(self):
+    def get_map_names(
+            self
+    ) -> List[str]:
         """Return list of included surface signal map names."""
+
         if not self.signalMaps:
             return []
 
         return [x.name for x in self.signalMaps]
 
-    def get_map(self, name):
+    def get_map(
+            self,
+            name: str
+    ) -> SurfaceSignalMap:
         """
         Get a surface signal map by name.
 
@@ -137,7 +293,6 @@ class Surface:
 
         Returns:
             SurfaceSignalMap
-
         """
 
         smap = [m for m in self.signalMaps if m.name == name]
@@ -147,14 +302,20 @@ class Surface:
                            .format(name))
         return smap[0]
 
-    def get_label_names(self):
+    def get_label_names(
+            self
+    ) -> List[str]:
         """Return list of included surface label names."""
+
         if not self.labels:
             return []
 
         return [x.name for x in self.labels]
 
-    def get_label(self, name):
+    def get_label(
+            self,
+            name: str
+    ) -> SurfaceLabel:
         """
         Get a surface label by name.
 
@@ -175,7 +336,10 @@ class Surface:
                            .format(name))
         return label[0]
 
-    def add_signal_maps(self, maps):
+    def add_signal_maps(
+            self,
+            maps: Union[SurfaceSignalMap, List[SurfaceSignalMap]]
+    ) -> None:
         """Add surface maps.
 
         Parameters:
@@ -209,7 +373,10 @@ class Surface:
 
         return
 
-    def add_labels(self, labels):
+    def add_labels(
+            self,
+            labels: Union[SurfaceLabel, List[SurfaceLabel]]
+    ) -> None:
         """Add surface labels.
 
         Parameters:
@@ -243,7 +410,12 @@ class Surface:
 
         return
 
-    def dump_mesh_vtk(self, filename, maps_to_add=None, labels_to_add=None):
+    def dump_mesh_vtk(
+            self,
+            filename: str,
+            maps_to_add: Optional[List[str]] = None,
+            labels_to_add: Optional[List[str]] = None
+    ) -> str:
         """
         Save mesh to VTK file.
         Surface signal map(s) and surface label(s) can be added by name.
@@ -253,7 +425,7 @@ class Surface:
                 path to output file
             maps_to_add : list of str (optional)
                 names of the surface signal maps to add.
-            labels_to_add : list of str
+            labels_to_add : list of str (optional)
                 names of the surface signal maps to add.
 
         Raises:
@@ -288,13 +460,15 @@ class Surface:
                 log.debug('added surface label {}'.format(name))
 
         writer = FileWriter()
-        # TODO: add surface map data and group-ID if available
         return writer.dump(filename,
                            self.X,
                            self.tris,
                            data=data if data else None)
 
-    def dump_mesh_carp(self, filename):
+    def dump_mesh_carp(
+            self,
+            filename: str
+    ) -> str:
         """
         Save mesh to openCARP files .pts and .elem.
 
@@ -313,11 +487,16 @@ class Surface:
         writer = FileWriter()
 
         writer.dump(filename + '.pts', self.X)
+        # TODO: add region labels/tags to .elem export
         writer.dump(filename + '.elem', self.tris)
 
         return filename
 
-    def dump_signal_map(self, basename, which=None):
+    def dump_signal_map(
+            self,
+            basename: str,
+            which: Optional[List[str]] = None
+    ) -> str:
         """
         Export interpolated surface parameter maps in DAT format.
 
@@ -331,7 +510,6 @@ class Surface:
 
         Returns:
             str : information if export was successful or not
-
         """
 
         status = ''
@@ -353,12 +531,166 @@ class Surface:
 
         return status.rstrip()
 
-    def get_closest_vertex(self, points, limit_to_triangulation=False):
+    def add_to_xml(
+            self,
+            root: ET.Element,
+            **kwargs
+    ) -> None:
+        """
+        Add surface data to XML.
+
+        XML attributes:
+            numVertices : number of vertices
+            numTriangles : number of faces
+
+            Example:
+                <Mesh
+                    numVertices=n_verts,
+                    numTriangles=n_tris>
+                    <DataArray name="vertices"/>
+                    <DataArray name="triangulation"/>
+                    <SurfaceLabels count=n_labels>
+                        <SurfaceLabel location="pointData" or "cellData">
+                            <DataArray/>
+                        </>
+                    </>
+                    <SignalMaps count=n_labels>
+                        <SignalMap location="pointData" or "cellData">
+                            <DataArray/>
+                        </>
+                    </>
+                </>
+
+        Data is saved as base64 encoded bytes string.
+        Extra attributes can be added by keyword arguments.
+
+        Parameters:
+            root : ET.Element
+                XML Element the data is added to
+
+        Returns:
+            None
+        """
+
+        element = ET.SubElement(root, Surface.XML_IDENTIFIER,
+                                numVertices=str(self.X.shape[0]),
+                                numTriangles=str(self.tris.shape[0]),
+                                )
+
+        # add extra attributes
+        for key, value in kwargs:
+            element.set(key, value)
+
+        # add triangulation data
+        xml_add_binary_numpy(element, 'vertices', self.X)
+        xml_add_binary_numpy(element, 'triangulation', self.tris)
+
+        # add surface labels
+        surf_labels = ET.SubElement(element, 'SurfaceLabels',
+                                    count=str(len(self.labels))
+                                    )
+        for label in self.labels:
+            s_label = ET.SubElement(surf_labels, 'SurfaceLabel',
+                                    location=label.location,
+                                    description=label.description
+                                    )
+            xml_add_binary_numpy(s_label, label.name, label.values)
+
+        # add surface parameter maps
+        surf_maps = ET.SubElement(element, 'SignalMaps',
+                                  count=str(len(self.signalMaps))
+                                  )
+        for signal_map in self.signalMaps:
+            s_map = ET.SubElement(surf_maps, 'SignalMap',
+                                  location=signal_map.location,
+                                  description=signal_map.description
+                                  )
+            xml_add_binary_numpy(s_map, signal_map.name, signal_map.values)
+
+    @classmethod
+    def load_from_xml(
+            cls,
+            element: ET.Element
+    ) -> Optional[TSurface]:
+        """
+        Load Surface data from XML.
+
+        Parameters:
+            element : eTree.Element
+                XML element from which data is loaded
+
+        Returns: Surface, None
+        """
+
+        if not element.tag == Surface.XML_IDENTIFIER:
+            log.warning('cannot import Surface from XML element {}!'
+                        .format(element.tag)
+                        )
+            return None
+
+        numVerts = int(element.get('numVertices'))
+        numTris = int(element.get('numTriangles'))
+
+        verts = [x for x in element.findall('DataArray')
+                 if x.get('name') == 'vertices'][0]
+        _, vertices = xml_load_binary_data(verts)
+
+        tris = [x for x in element.findall('DataArray')
+                if x.get('name') == 'triangulation'][0]
+        _, triangulation = xml_load_binary_data(tris)
+
+        # sanity check
+        if not vertices.shape[0] == numVerts:
+            log.warning('cannot import Surface from XML, size mismatch in '
+                        'number of vertices!')
+        if not triangulation.shape[0] == numTris:
+            log.warning('cannot import Surface from XML, size mismatch in '
+                        'number of triangulations!')
+
+        labels = []
+        for label in element.find('SurfaceLabels').iter('SurfaceLabel'):
+            l_name, data = xml_load_binary_data(label.find('DataArray'))
+            # add explicit 2nd dimension
+            try:
+                data.shape[1]
+            except IndexError:
+                data = np.expand_dims(data, axis=1)
+            labels.append(SurfaceLabel(l_name,
+                                       data,
+                                       label.get('location'),
+                                       label.get('description')
+                                       )
+                          )
+        s_maps = []
+        for s_map in element.find('SignalMaps').iter('SignalMap'):
+            m_name, data = xml_load_binary_data(s_map.find('DataArray'))
+            # add explicit 2nd dimension
+            try:
+                data.shape[1]
+            except IndexError:
+                data = np.expand_dims(data, axis=1)
+            s_maps.append(SurfaceSignalMap(m_name,
+                                           data,
+                                           s_map.get('location'),
+                                           s_map.get('description'))
+                          )
+
+        return cls(
+            vertices, triangulation,
+            labels=labels,
+            signal_maps=s_maps
+        )
+
+    def get_closest_vertex(
+            self,
+            points: List[np.ndarray],
+            limit_to_triangulation: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Find the closest vertex to given point(s).
 
         Parameters:
-            points : list of tuple
+            points : list of ndarray (3, )
                 cartesian coordinates of points
             limit_to_triangulation : boolean (optional)
                 Not implemented yet
@@ -366,7 +698,7 @@ class Surface:
         Returns:
             ndarray : coordinates of closest vertex
             ndarray : Euclidean distance
-
+            ndarray : surface normals
         """
 
         # TODO: handle limitation to triangulation
@@ -386,27 +718,29 @@ class Surface:
 
         return self.X[vertices, :], distances, self.XNormals[vertices, :]
 
-    def get_center_of_mass(self):
+    def get_center_of_mass(
+            self
+    ) -> np.ndarray:
         """
         Get the center of mass of the mesh.
 
         Returns:
             ndarray : Cartesian coordinates of center of mass
-
         """
 
         if not self.has_points():
-            return [0.0, 0.0, 0.0]
+            return np.array([0.0, 0.0, 0.0])
 
         return np.sum(self.X, axis=0) / self.X.shape[0]
 
-    def get_free_boundary(self):
+    def get_free_boundary(
+            self
+    ) -> np.ndarray:
         """
         Find free boundary vertices, i.e. vertices at the edge.
 
         Returns:
             ndarray : index of vertices at edge
-
         """
 
         # first find the edges which make up the triangles
@@ -429,17 +763,21 @@ class Surface:
 
         return np.delete(v_free, idx)
 
-    def remove_vertices(self, index):
+    def remove_vertices(
+            self,
+            index: np.ndarray
+    ) -> None:
         """
-        Remove vertices from mesh. Triangulation, vertex normals, signal
-        maps and labels are automatically updated.
+        Remove vertices from mesh.
+        Triangulation, vertex normals, signal maps and labels are
+        automatically updated.
 
         Parameters:
-            index: ndarray of int
+            index: ndarray
+                index of vertices to remove from surface as type int
 
         Returns:
             None
-
         """
 
         # renumber triangulation first
@@ -459,17 +797,21 @@ class Surface:
                                          index,
                                          axis=0)
 
-    def remove_tris(self, index):
+    def remove_tris(
+            self,
+            index: np.ndarray
+    ) -> None:
         """
-        Remove elements from triangulation. Triangulation, vertex normals,
-        signal maps and labels are automatically updated.
+        Remove elements from triangulation.
+        Triangulation, vertex normals, signal maps and labels are
+        automatically updated.
 
         Parameters:
-            index: ndarray of int
+            index: ndarray
+                index of triangulations to remove from surface as type int
 
         Returns:
             None
-
         """
 
         self.tris = np.delete(self.tris, index, axis=0)
@@ -486,7 +828,10 @@ class Surface:
                                          index,
                                          axis=0)
 
-    def _renumber_tris(self, vertices_to_remove):
+    def _renumber_tris(
+            self,
+            vertices_to_remove: np.ndarray
+    ) -> np.ndarray:
         """
         Renumber triangulation before removing vertices from a mesh.
 
@@ -527,170 +872,3 @@ class Surface:
         tris_corrected = np.reshape(tris_corrected, tris_shape)  # reshape
 
         return tris_corrected
-
-
-class SurfaceSignalMap:
-    """A class representing a signal property map.
-
-    Attributes:
-        name : string
-        values : ndarray, dim (n, 1)
-            explicit second dimension must be given for VTK export
-            compatibility
-        location : string
-            location of data on the mesh
-            Options: 'pointData', 'cellData'
-        description : string
-            additional information on data
-
-    Methods:
-        to_vtk_dict()
-            convert class to VTK compatible representation
-        export(basename)
-            export surface map data to DAT format
-
-    """
-
-    def __init__(self, name, values, location,
-                 description=None):
-        """
-        Constructor.
-
-        Parameters:
-            name : str
-                name/description of this map
-            values : ndarray (n_verts/n_tris, 1)
-            location : str
-                location of data, either 'pointData' or 'cellData'
-
-        """
-
-        self.name = name
-        # adjust values dims if necessary
-        try:
-            values.shape[1]
-        except IndexError:
-            np.expand_dims(values, axis=1)
-        self.values = values
-        self.location = location
-        self.description = description
-
-    def to_vtk_dict(self):
-        """Convert class to VTK compatible representation."""
-
-        return {'name': self.name,
-                'values': self.values,
-                'location': self.location
-                }
-
-    def export(self, basename):
-        """
-        Export surface map data to DAT file.
-
-        Naming Convention:
-            <basename>.map.<surface_map_name>.dat
-
-        Parameters:
-            basename : str
-                path to export file
-
-        Returns:
-            filename : str
-        """
-
-        if basename.endswith('.dat'):
-            basename = basename[:-4]
-
-        filename = basename + '.map.' + self.name + '.dat'
-
-        writer = FileWriter()
-        writer.dump(filename, self.values[:, 0])
-
-        return filename
-
-
-class SurfaceLabel:
-    """A class representing a signal property map.
-
-    Attributes:
-        name : string
-        values : ndarray, dim (n, 1)
-            explicit second dimension must be given for VTK export
-            compatibility
-        location : string
-            location of data on the mesh
-            Options: 'pointData', 'cellData'
-        description : string
-            additional information on data
-
-    Methods:
-        to_vtk_dict()
-            convert class to VTK compatible representation
-        export(basename)
-            export surface map data to DAT format
-
-    """
-
-    def __init__(self, name, values, location, description=''):
-        """
-        Constructor.
-
-        Parameters:
-            name : str
-                name/description of this surface label
-            values : ndarray (n_verts/n_tris, 1)
-            location : str
-                location of data, either 'pointData' or 'cellData'
-
-        """
-
-        self.name = name
-        self.values = values
-        self.location = location
-        self.description = description
-
-    def to_vtk_dict(self):
-        """Convert class to VTK compatible representation."""
-
-        return {'name': self.name,
-                'values': self.values,
-                'location': self.location
-                }
-
-    def export(self, basename):
-        """
-        Export surface map data to DAT file.
-
-        Naming Convention:
-            <basename>.<surface_label_name>.dat
-
-        Parameters:
-            basename : str
-                path to export file
-
-        Returns:
-            filename : str
-        """
-
-        if basename.endswith('.dat'):
-            basename = basename[:-4]
-
-        filename = basename + '.' + self.name + '.dat'
-
-        writer = FileWriter()
-        writer.dump(filename, self.values[:, 0])
-
-        return filename
-
-
-Mesh = namedtuple('Mesh', ['registrationMatrix',
-                           'fileNames'])
-Mesh.__doc__ = """
-Additional meshes.
-
-Attributes:
-    registrationMatrix : ndarray (4, 4)
-        transformation matrix (scale, rotate, shift)
-    filenames: list of str
-        files containing triangulation data
-"""

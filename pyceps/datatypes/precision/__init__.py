@@ -15,30 +15,3 @@
 #
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
-from collections import namedtuple
-
-
-Trace = namedtuple('Trace', ['name', 'data', 'fs'])
-Trace.__doc__ = """
-A namedtuple representing a signal trace.
-
-Fields:
-    name : str
-    data : ndarray (t, )
-        signal data as type np.float32
-    fs : float
-"""
-
-BodySurfaceECG = namedtuple('BodySurfaceECG',
-                            ['method', 'refAnnotation', 'traces']
-                            )
-BodySurfaceECG.__doc__ = """
-A namedtuple representing body surface ECG traces for a mapping procedure.
-
-Fields:
-    method : str
-    refAnnotation : int
-    traces : list of Trace
-"""
