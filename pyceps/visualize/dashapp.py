@@ -650,6 +650,9 @@ def get_dash_app(study, bgnd=None):
     def on_lesion_parameter_changed(rfi_name, lesion_glyphs_state,
                                     lesion_mapper, map_name):
         if not rfi_name or not map_name:
+            lesion_mapper['colorByArrayName'] = None
+            lesion_mapper['scalarMode'] = 0  # DEFAULT
+
             return ([],                   # lesions RFI value
                     [0, 1],               # lesions RFI color range
                     lesion_glyphs_state,  # glyph algorithm state
@@ -670,14 +673,15 @@ def get_dash_app(study, bgnd=None):
                     )
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
-        rfi = [rfi.value for site in p_map.lesions.sites
+
+        rfi = [rfi.value if rfi.name == rfi_name else np.nan
+               for site in p_map.lesions.sites
                for rfi in site.RFIndex
-               if rfi.name == rfi_name
                ]
 
         # get data range as integers for UI objects
-        rng = [np.floor(min(rfi)).astype(int),
-               np.ceil(max(rfi)).astype(int)
+        rng = [np.floor(np.nanmin(rfi)).astype(int),
+               np.ceil(np.nanmax(rfi)).astype(int)
                ]
 
         diameter = np.median([site.diameter for site in p_map.lesions.sites])
@@ -688,7 +692,7 @@ def get_dash_app(study, bgnd=None):
         lesion_mapper['scalarMode'] = 3  # USE_POINT_FIELD_DATA
 
         return (rfi,                    # lesions RFI values
-                rng,   # lesions RFI color range
+                rng,                    # lesions RFI color range
                 lesion_glyphs_state,    # glyph algorithm state
                 lesion_mapper,          # lesion representation mapper
                 False,                  # lesion color range slider disabled
