@@ -16,15 +16,20 @@
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Optional, Union
 import numpy as np
 from scipy.spatial import cKDTree
 
 
-def inverse_distance_weighting(sampling_points, sampling_vals, interp_points,
-                               kdtree=None,
-                               p=2,
-                               k=1000,
-                               return_weights=False):
+def inverse_distance_weighting(
+        sampling_points: np.ndarray,
+        sampling_vals: np.ndarray,
+        interp_points: np.ndarray,
+        kdtree: Optional[cKDTree] = None,
+        p: int = 2,
+        k: int = 1000,
+        return_weights: bool = False
+) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """
     Interpolate data by inverse distance weighting algorithm.
     See: https://en.wikipedia.org/wiki/Inverse_distance_weighting
@@ -50,7 +55,7 @@ def inverse_distance_weighting(sampling_points, sampling_vals, interp_points,
             Inverse distance weights points, sampled at interp_points
 
     """
-    assert(k > 1)
+    assert (k > 1)
 
     k = np.minimum(k, sampling_points.shape[0])
 
@@ -65,7 +70,10 @@ def inverse_distance_weighting(sampling_points, sampling_vals, interp_points,
                 )
         weights = 1./(dist**p)
         weights /= np.sum(weights, axis=-1, keepdims=True)
-        weights = np.where(np.any(zero_dist, axis=-1, keepdims=True), zero_dist.astype(sampling_vals.dtype), weights)
+        weights = np.where(np.any(zero_dist, axis=-1, keepdims=True),
+                           zero_dist.astype(sampling_vals.dtype),
+                           weights
+                           )
 
     interp_vals = np.sum(weights * sampling_vals[inds], axis=-1)
 
@@ -79,7 +87,9 @@ def inverse_distance_weighting(sampling_points, sampling_vals, interp_points,
     return interp_vals
 
 
-def remove_redundant_points(points):
+def remove_redundant_points(
+        points: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Remove points of the point cloud that lie on top of each other.
 
     Parameters:

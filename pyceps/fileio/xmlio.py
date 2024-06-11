@@ -16,19 +16,20 @@
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import List, Union, Optional
 import xml.etree.ElementTree as ET
 import base64
 import numpy as np
 
-from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
-from pyceps.datatypes.lesions import Lesion, RFIndex
 
 
-def xml_add_binary_numpy(root: ET.Element,
-                         name: str,
-                         data,
-                         **kwargs):
+def xml_add_binary_numpy(
+        root: ET.Element,
+        name: str,
+        data: np.ndarray,
+        **kwargs
+) -> None:
     """
     Create etree DataArray with binary numpy data.
 
@@ -82,10 +83,12 @@ def xml_add_binary_numpy(root: ET.Element,
         element.set(key, value)
 
 
-def xml_add_binary_trace(root: ET.Element,
-                         name: str,
-                         data,
-                         **kwargs):
+def xml_add_binary_trace(
+        root: ET.Element,
+        name: str,
+        data: Union[Trace, List[Trace]],
+        **kwargs
+) -> None:
     """
     Create etree Trace with binary data.
 
@@ -153,142 +156,11 @@ def xml_add_binary_trace(root: ET.Element,
                              )
 
 
-def xml_add_binary_surface(root: ET.Element,
-                           data,
-                           **kwargs):
-    """
-    Create etree Surface with binary data.
-
-    XML attributes:
-        numVertices : number of vertices
-        numTriangles : number of faces
-
-        Example:
-            <Mesh
-                numVertices=n_verts,
-                numTriangles=n_tris>
-                <DataArray name="vertices"/>
-                <DataArray name="triangulation"/>
-                <SurfaceLabels count=n_labels>
-                    <SurfaceLabel location="pointData" or "cellData">
-                        <DataArray/>
-                    </>
-                </>
-                <SignalMaps count=n_labels>
-                    <SignalMap location="pointData" or "cellData">
-                        <DataArray/>
-                    </>
-                </>
-            </>
-
-    Data is saved as base64 encoded bytes string.
-    Extra attributes can be added by keyword arguments.
-
-    Parameters:
-        root : ET.Element
-            XML Element the data is added to
-        data : Surface
-            data to be added
-
-    Returns:
-        None
-    """
-
-    element = ET.SubElement(root, 'Mesh',
-                            numVertices=str(
-                             data.X.shape[0]),
-                            numTriangles=str(
-                             data.tris.shape[0]),
-                            )
-
-    # add extra attributes
-    for key, value in kwargs:
-        element.set(key, value)
-
-    # add triangulation data
-    xml_add_binary_numpy(element, 'vertices', data.X)
-    xml_add_binary_numpy(element, 'triangulation', data.tris)
-
-    # add surface labels
-    surf_labels = ET.SubElement(element, 'SurfaceLabels',
-                                count=str(len(data.labels))
-                                )
-    for label in data.labels:
-        s_label = ET.SubElement(surf_labels, 'SurfaceLabel',
-                                location=label.location,
-                                description=label.description
-                                )
-        xml_add_binary_numpy(s_label, label.name, label.values)
-
-    # add surface parameter maps
-    surf_maps = ET.SubElement(element, 'SignalMaps',
-                              count=str(len(data.signalMaps))
-                              )
-    for signal_map in data.signalMaps:
-        s_map = ET.SubElement(surf_maps, 'SignalMap',
-                              location=signal_map.location,
-                              description=signal_map.description
-                              )
-        xml_add_binary_numpy(s_map, signal_map.name, signal_map.values)
-
-
-def xml_add_binary_lesion(root: ET.Element,
-                          data,
-                          **kwargs
-                          ):
-    """Create etree Lesions with binary data.
-
-    XML attributes:
-        count : number of ablation sites
-
-        Example:
-            <Lesion
-                count=num_lesions>
-                <DataArray name="points"/>
-                <DataArray name="diameter"/>
-                <DataArray name="RFI"/>
-                <DataArray name="name"/>
-            </>
-
-    Data is saved as base64 encoded bytes string.
-    Extra attributes can be added by keyword arguments.
-
-    Parameters:
-        root : ET.Element
-            XML Element the data is added to
-        data : list of Lesion
-            data to be added
-
-    Returns:
-        None
-    """
-
-    element = ET.SubElement(root, 'Lesions',
-                            count=str(len(data))
-                            )
-    # add extra attributes
-    for key, value in kwargs:
-        element.set(key, value)
-
-    xml_add_binary_numpy(element, 'points',
-                         np.array([site.X for site in data])
-                         )
-    xml_add_binary_numpy(element, 'diameter',
-                         np.array([site.diameter for site in data])
-                         )
-    xml_add_binary_numpy(element, 'RFI',
-                         np.array([x.value for site in data
-                                   for x in site.RFIndex])
-                         )
-    xml_add_binary_numpy(element, 'name',
-                         np.array([x.name for site in data
-                                   for x in site.RFIndex])
-                         )
-
-
-def xml_add_binary_bsecg(root: ET.Element,
-                         data,
-                         **kwargs):
+def xml_add_binary_bsecg(
+        root: ET.Element,
+        data: List[BodySurfaceECG],
+        **kwargs
+) -> None:
     """Create etree BodySurfaceECG with binary data.
 
     XML attributes:
@@ -341,13 +213,18 @@ def xml_add_binary_bsecg(root: ET.Element,
         xml_add_binary_trace(item, trace.method, trace.traces)
 
 
-def xml_load_binary_data(element: ET.Element):
+def xml_load_binary_data(
+        element: ET.Element
+) -> tuple[Optional[str], Optional[np.ndarray]]:
     """
     Load binary data from etree DataArray.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        NotImplementedError : if data format is in XML is not supported
 
     Returns:
         name : str
@@ -373,70 +250,18 @@ def xml_load_binary_data(element: ET.Element):
     return name, data
 
 
-def xml_load_binary_surface(element: ET.Element):
-    """
-    Load binary Surface object from etree element.
-
-    Parameters:
-        element : ET.Element
-            XML Element to read data from
-
-    Returns:
-        Surface
-    """
-
-    numVerts = element.get('numVertices')
-    numTris = element.get('numTriangles')
-
-    verts = [x for x in element.findall('DataArray')
-             if x.get('name') == 'vertices'][0]
-    _, vertices = xml_load_binary_data(verts)
-
-    tris = [x for x in element.findall('DataArray')
-            if x.get('name') == 'triangulation'][0]
-    _, triangulation = xml_load_binary_data(tris)
-
-    labels = []
-    for label in element.find('SurfaceLabels').iter('SurfaceLabel'):
-        l_name, data = xml_load_binary_data(label.find('DataArray'))
-        # add explicit 2nd dimension
-        try:
-            data.shape[1]
-        except IndexError:
-            data = np.expand_dims(data, axis=1)
-        labels.append(SurfaceLabel(l_name,
-                                   data,
-                                   label.get('location'),
-                                   label.get('description')
-                                   )
-                      )
-    s_maps = []
-    for s_map in element.find('SignalMaps').iter('SignalMap'):
-        m_name, data = xml_load_binary_data(s_map.find('DataArray'))
-        # add explicit 2nd dimension
-        try:
-            data.shape[1]
-        except IndexError:
-            data = np.expand_dims(data, axis=1)
-        s_maps.append(SurfaceSignalMap(m_name,
-                                       data,
-                                       s_map.get('location'),
-                                       s_map.get('description'))
-                      )
-
-    return Surface(vertices, triangulation,
-                   labels=labels,
-                   signal_maps=s_maps
-                   )
-
-
-def xml_load_binary_trace(element: ET.Element):
+def xml_load_binary_trace(
+        element: ET.Element
+) -> tuple[Optional[str], Optional[Union[Trace, List[Trace]]]]:
     """
     Load binary Traces from etree element.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        ImportError : if number of expected traces does not match data
 
     Returns:
         name : str
@@ -463,6 +288,11 @@ def xml_load_binary_trace(element: ET.Element):
                      )
         traces.append(t)
 
+    if not len(traces) == count:
+        raise ImportError('expected {} traces, imported {}'
+                          .format(count, len(traces))
+                          )
+
     if len(traces) > 1:
         traces = [[row[i] for row in traces]
                   for i in range(max(len(r) for r in traces))]
@@ -472,13 +302,18 @@ def xml_load_binary_trace(element: ET.Element):
     return trace_name, traces
 
 
-def xml_load_binary_bsecg(element: ET.Element):
+def xml_load_binary_bsecg(
+        element: ET.Element
+) -> List[BodySurfaceECG]:
     """
     Load binary BodySurfaceECG object from etree element.
 
     Parameters:
         element : ET.Element
             XML Element to read data from
+
+    Raises:
+        ImportError : if number of expected BSECGs does not match data
 
     Returns:
         list of BodySurfaceECG
@@ -496,45 +331,9 @@ def xml_load_binary_bsecg(element: ET.Element):
                            )
                      )
 
+    if not len(bsecg) == count:
+        raise ImportError('expected {} BSEG(s), imported {}'
+                          .format(count, len(bsecg))
+                          )
+
     return bsecg
-
-
-def xml_load_binary_lesion(element: ET.Element):
-    """
-    Load binary Lesion object from etree element.
-
-    Parameters:
-        element : ET.Element
-            XML Element to read data from
-
-    Returns:
-        list of Lesion
-    """
-
-    count = int(element.get('count'))
-    lesions = []
-
-    l_data = {}
-    for arr in element.findall('DataArray'):
-        name, data = xml_load_binary_data(arr)
-        l_data[name] = data
-
-    for i in range(count):
-        rfi = []
-        if isinstance(l_data['RFI'][i], np.ndarray):
-            for k in range(l_data['RFI'][i].shape[0]):
-                rfi.append(RFIndex(name=l_data['name'][i][k],
-                                   value=l_data['RFI'][i][k]))
-        else:
-            rfi.append(RFIndex(name=l_data['name'][i],
-                               value=l_data['RFI'][i])
-                       )
-
-        lesions.append(
-            Lesion(X=l_data['points'][i],
-                   diameter=l_data['diameter'][i],
-                   RFIndex=rfi
-                   )
-        )
-
-    return lesions

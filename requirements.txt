@@ -5,4 +5,4 @@ scipy == 1.10.1; python_version=='3.8'
 scipy >= 1.12; python_version>='3.9'
 dash_bootstrap_components >= 1.4.2
 dash_vtk >= 0.0.9
-py7zr >= 0.20.8
+py7zr >= 0.21.0
