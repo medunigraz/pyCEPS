@@ -875,3 +875,74 @@ def read_electrode_pos_file(
         xyz = xyz[:lim[-2], :]
 
     return idx, time, xyz
+
+
+def read_car_file(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> Tuple[str, np.ndarray]:
+    """
+    Reads a Carto3 CAR overview file.
+
+    Parameters:
+        fid : file-like
+            file handle to electrode position file
+        encoding :
+            file encoding used for binary files
+
+    Raises:
+        TypeError : If version is not supported
+
+    Returns:
+        map_name : str
+        data : ndarray type str
+            columns in data are:
+            0  ... point ID (usually "P")
+            1  ... point number
+            2  ... X coordinate
+            3  ... Y coordinate
+            4  ... Z coordinate
+            5  ... unipolar voltage
+            6  ... bipolar voltage
+            7  ... LAT annotation (relative to reference annotation)
+            8  ... WOI start
+            9  ... WOI end
+            10 ... reference annotation
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.read_car_file'.format(__name__))
+
+    log.debug('reading file {}'.format(fid.name))
+
+    # reader file format info
+    line = fid.readline().decode(encoding=encoding).rstrip()
+    version, map_name = line.split(' ', 1)
+
+    # get version specifics
+    version = re.findall(r'\d+', version)
+    if not version:
+        raise TypeError('unable to retrieve version!')
+    major = int(version[0])
+    minor = int(version[1])
+
+    if major == 5:
+        cols = [0, 2, 4, 5, 6, 10, 11, 12]
+    elif major == 6:
+        cols = [0, 2, 4, 5, 6, 10, 11, 12, 32, 33, 45]
+    else:
+        raise TypeError('file version {}.{} not supported!'
+                        .format(major, minor))
+
+    # read data as strings
+    data = np.loadtxt(fid, dtype=str, usecols=cols)
+
+    if major < 6:
+        # WOI and ref annotation are missing, add dummies
+        # reference is at 0, WOI is -2500 / +2500 so valid points should lie
+        # within and invalid (-10000) lie outside
+        data = np.insert(data, data.shape[1], '-2500', axis=1)  # WOI start
+        data = np.insert(data, data.shape[1], '2500', axis=1)  # WOI end
+        data = np.insert(data, data.shape[1], '0', axis=1)  # refAnnotation
+
+    return map_name, data
