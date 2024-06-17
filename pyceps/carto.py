@@ -336,12 +336,12 @@ class CartoPoint(EPPoint):
 
         """
 
-        if not self.latAnnotation:
+        if np.isnan(self.latAnnotation):
             log.warning('no activation annotation found for {}!'
                         .format(self.name)
                         )
             raise ValueError('Parameter mapAnnotation missing!')
-        if self.woi.size == 0 or not self.refAnnotation:
+        if self.woi.size == 0 or np.isnan(self.refAnnotation):
             log.warning('no woi and/or reference annotation found for {}!'
                         .format(self.name)
                         )
