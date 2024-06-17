@@ -4,9 +4,14 @@
 
 ### Added
 
+- quick visualization of Carto studies, (#4) (Robert Arnold)
+
 ### Changed
 
 ### Fixed
+
+- visualization error if no lesion data is available (Robert Arnold)
+- ambiguity for annotation times 0 and NaN (Robert Arnold) 
 
 ### Removed
 
