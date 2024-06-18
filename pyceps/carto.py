@@ -158,12 +158,20 @@ class CartoPoint(EPPoint):
             parent : CartoMap (optional)
                 the map this point belongs to
 
+        Raises:
+            TypeError : if parent is not of type CartoMap
+
         Returns:
             None
-
         """
 
-        super().__init__(name, coordinates=coordinates, parent=parent)
+        super().__init__(name, coordinates=coordinates, parent=None)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, CartoMap):
+            raise TypeError('Cannot set parent for CartoPoint of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
 
         # add Carto3 specific attributes
         self.pointFile = ''
@@ -948,11 +956,20 @@ class CartoMap(EPMap):
             parent : CartoStudy (optional)
                 study this map belongs to
 
+        Raises:
+            TypeError : if parent is not of type CartoStudy
+
         Returns:
             None
         """
 
-        super().__init__(name, parent=parent)
+        super().__init__(name, parent=None)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, CartoStudy):
+            raise TypeError('Cannot set parent for CartoPoint of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
 
         # add Carto3 specific attributes
         self.studyXML = study_xml

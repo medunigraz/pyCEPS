@@ -115,7 +115,7 @@ class EPPoint:
 
         """
 
-        if not issubclass(type(parent), EPMap):
+        if parent is not None and not issubclass(type(parent), EPMap):
             raise TypeError('Cannot set parent for EPPoint of type {}'
                             .format(type(parent)))
 
@@ -274,7 +274,7 @@ class EPMap:
 
         """
 
-        if not issubclass(type(parent), EPStudy):
+        if parent is not None and not issubclass(type(parent), EPStudy):
             raise TypeError('Cannot set parent for EPMap of type {}'
                             .format(type(parent)))
 
