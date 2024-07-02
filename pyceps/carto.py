@@ -2179,6 +2179,7 @@ class CartoStudy(EPStudy):
         # check if any data was loaded
         if not len(sites) > 0:
             log.warning('no visitag data found in files! Aborting...')
+            return
 
         self.visitag.sites = sites
 

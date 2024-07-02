@@ -1000,11 +1000,11 @@ class EPMap:
             None
         """
 
-        if not self.lesions and not len(self.lesions.sites) > 0:
+        log.info('exporting lesion(s) data...')
+
+        if self.lesions is None or not len(self.lesions.sites) > 0:
             log.info('no lesion data found for map {}'.format(self.name))
             return
-
-        log.info('exporting lesion(s) data...')
 
         writer = FileWriter()
 
