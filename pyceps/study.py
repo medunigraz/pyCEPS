@@ -1488,7 +1488,7 @@ class EPStudy:
             xml_add_binary_bsecg(proc, cmap.bsecg)
 
             # add lesion data
-            if cmap.lesions:
+            if cmap.lesions is not None:
                 cmap.lesions.add_to_xml(proc)
 
         return root, filepath

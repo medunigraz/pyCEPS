@@ -2679,7 +2679,7 @@ class CartoStudy(EPStudy):
 
             # load lesions
             lesions_item = proc.find('Lesions')
-            if mesh_item:
+            if lesions_item:
                 new_map.lesions = Lesions.load_from_xml(lesions_item)
             else:
                 log.info('no lesion data found in XML')
