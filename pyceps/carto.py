@@ -1737,14 +1737,25 @@ class CartoMap(EPMap):
                                     .format(self.name))
         self.surfaceFile = filenames
         self.volume = float(map_item.get('Volume'))
-        self.RefAnnotationConfig = RefAnnotationConfig(
-            algorithm=int(
-                map_item.find('RefAnnotationConfig').get('Algorithm')
-            ),
-            connector=int(
-                map_item.find('RefAnnotationConfig').get('Connector')
+
+        # get configuration for reference detection
+        ref_item = map_item.find('RefAnnotationConfig')
+        if ref_item is not None:
+            algorithm = int(ref_item.get('Algorithm'))
+            sc_criterion = None
+            if algorithm == 0:
+                # single channel detection (probably CS signal)
+                connector = int(ref_item.get('Channel'))
+                sc_criterion = int(ref_item.get('SingleChannelCriterion'))
+            elif algorithm == 1:
+                connector = int(ref_item.get('Connector'))
+            else:
+                connector = -1
+            self.RefAnnotationConfig = RefAnnotationConfig(
+                algorithm=algorithm,
+                connector=connector,
+                singleChannelCriterion=sc_criterion
             )
-        )
 
         # get map coloring range table
         colorRangeItem = map_item.find('ColoringRangeTable')
