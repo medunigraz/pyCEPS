@@ -17,7 +17,7 @@ jobs:
           valueFile: './CITATION.cff'
           branch: feature/update-cff
           targetBranch: feature/update-cff
-          createPR: 'true'
+          createPR: true
           message: 'changing version'
           changes: |
             {
