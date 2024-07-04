@@ -14,7 +14,7 @@ jobs:
       - name: edit version number
         uses: fjogeleit/yaml-update-action@main
         with:
-          valueFile: './CITATION.cff'
+          valueFile: 'CITATION.cff'
           branch: feature/update-cff
           targetBranch: feature/update-cff
           createPR: true
