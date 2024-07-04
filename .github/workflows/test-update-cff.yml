@@ -23,8 +23,6 @@ jobs:
         uses: fjogeleit/yaml-update-action@main
         with:
           valueFile: 'CITATION.cff'
-          propertyPath: 'title'
-          value: "${{ steps.date.outputs.time }}"
           branch: feature/update-cff
           targetBranch: feature/update-cff
           createPR: false
@@ -32,5 +30,6 @@ jobs:
           message: 'updated version number in CITATION.cff'
           changes: |
             {
-              "version": "1.0.8"
+              "version": "1.0.9",
+              "title": "${{ steps.date.outputs.time }}"
             }
