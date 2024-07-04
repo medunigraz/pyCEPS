@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: If you use this software, please cite the paper describing it as below. Specific versions of the software can additionally be referenced using individual DOIs.
 type: software
-title: '!!float ''2024-07-04'''
+title: '!2024-07-04'
 abstract: pyCEPS provides an interface to import, visualize, and translate clinical mapping data.
 doi: 10.5281/zenodo.10606340
 url: https://github.com/medunigraz/pyCEPS
