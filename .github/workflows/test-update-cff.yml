@@ -31,5 +31,4 @@ jobs:
           changes: |
             {
               "version": "1.0.6",
-              "[date-released]": "${{ steps.date.outputs.time }}"
             }
