@@ -31,5 +31,5 @@ jobs:
           changes: |
             {
               "version": "1.0.7",
-              "title": "!!timestamp '${{ steps.date.outputs.time }}'"
+              "title": "${{ steps.date.outputs.time }}"
             }
