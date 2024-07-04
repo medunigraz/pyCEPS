@@ -15,7 +15,7 @@ jobs:
         id: date
         run: |
           echo "RELEASE_DATE=& Get-Date -format yyyy-MM-dd" >> $GITHUB_ENV
-          echo "the release date is ${RELEASE_DATE}"
+          echo "the release date is ${{RELEASE_DATE}}"
       - name: edit version number
         uses: fjogeleit/yaml-update-action@main
         with:
@@ -28,5 +28,5 @@ jobs:
           changes: |
             {
               "version": "1.0.6",
-              "date-released": "${RELEASE_DATE}"
+              "date-released": "${{RELEASE_DATE}}"
             }
