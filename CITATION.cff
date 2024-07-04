@@ -22,6 +22,7 @@ preferred-citation:
   type: article
   doi: 10.1016/j.cmpb.2024.108299
   title: "pyCEPS: A cross-platform electroanatomic mapping data to computational model conversion platform for the calibration of digital twin models of cardiac electrophysiology"
+  abbreviation: Arnold_pyCEPS_article
   journal: Computer Methods and Programs in Biomedicine
   volume: 254
   year: 2024
