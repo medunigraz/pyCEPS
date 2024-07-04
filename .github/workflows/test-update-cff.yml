@@ -30,11 +30,7 @@ jobs:
           message: 'updated version number in CITATION.cff'
           changes: |
             {
-              "version": "1.0.6"
+              "version": "1.0.6",
+              "title": "pyCEPS new title"
+              "license-url": "something new"
             }
-      - name: edit release date
-        uses: teunmooij/yaml@v1
-        with:
-          from-file: 'CITATION.cff'
-          set: >-
-            {"date\-released": "${{ steps.date.outputs.time }}"}
