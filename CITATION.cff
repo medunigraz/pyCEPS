@@ -5,7 +5,7 @@ title: pyCEPS
 abstract: pyCEPS provides an interface to import, visualize, and translate clinical mapping data.
 doi: 10.5281/zenodo.10606340
 url: https://github.com/medunigraz/pyCEPS
-version: 1.0.4
+version: 1.0.5
 date-released: '2024-06-11T00:00:00.000Z'
 authors:
   - family-names: Arnold
