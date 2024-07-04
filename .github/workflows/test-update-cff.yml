@@ -33,13 +33,8 @@ jobs:
               "version": "1.0.6"
             }
       - name: edit release date
-        uses: fjogeleit/yaml-update-action@main
+        uses: teunmooij/yaml@v1
         with:
-          valueFile: 'CITATION.cff'
-          propertyPath: 'release-date'
-          value: ${{ steps.date.outputs.time }}
-          branch: feature/update-cff
-          targetBranch: feature/update-cff
-          createPR: false
-          commitChange: true
-          message: 'updated release date in CITATION.cff'
+          from-file: 'CITATION.cff'
+          set: >-
+            {"date-released": "${{ steps.date.outputs.time }}"}
