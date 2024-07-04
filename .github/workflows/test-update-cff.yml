@@ -21,7 +21,7 @@ jobs:
           message: 'changing version'
           changes: |
             {
-              "version": 1.0.3
+              "version": "1.0.3"
             }
       - name: commit changes
         uses: devops-infra/action-commit-push@master
