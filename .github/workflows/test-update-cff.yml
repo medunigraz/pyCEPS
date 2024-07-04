@@ -36,12 +36,10 @@ jobs:
         uses: fjogeleit/yaml-update-action@main
         with:
           valueFile: 'CITATION.cff'
+          propertyPath: 'release-date'
+          value: ${{ steps.date.outputs.time }}
           branch: feature/update-cff
           targetBranch: feature/update-cff
           createPR: false
           commitChange: true
           message: 'updated release date in CITATION.cff'
-          changes: |
-            {
-              "release-date": "!!timestamp ${{ steps.date.outputs.time }}"
-            }
