@@ -31,6 +31,6 @@ jobs:
           changes: |
             {
               "version": "1.0.6",
-              "title": "pyCEPS new title"
+              "title": "pyCEPS new title",
               "license-url": "something new"
             }
