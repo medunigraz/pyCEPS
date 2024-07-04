@@ -9,8 +9,11 @@ jobs:
     name: Update version number
     runs-on: ubuntu-latest
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
+      - name: Get current date
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
       - name: edit version number
         uses: fjogeleit/yaml-update-action@main
         with:
@@ -22,5 +25,6 @@ jobs:
           message: 'updated CITATION.cff'
           changes: |
             {
-              "version": "1.0.5"
+              "version": "1.0.5",
+              "date-released": "${{ steps.date.outputs.date }}"
             }
