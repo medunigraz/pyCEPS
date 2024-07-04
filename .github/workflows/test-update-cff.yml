@@ -22,5 +22,5 @@ jobs:
           message: 'updated CITATION.cff'
           changes: |
             {
-              "version": "1.0.4"
+              "version": "1.0.5"
             }
