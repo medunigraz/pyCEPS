@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Get current date
         id: date
-        run: echo "RELEASE_DATE=${date::$(date +'%Y-%m-%d')}" >> $GITHUB_ENV
+        run: echo "RELEASE_DATE=& Get-Date -format yyyy-MM-dd" >> $GITHUB_ENV
       - name: edit version number
         uses: fjogeleit/yaml-update-action@main
         with:
