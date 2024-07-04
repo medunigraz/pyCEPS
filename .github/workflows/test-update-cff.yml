@@ -26,5 +26,5 @@ jobs:
           changes: |
             {
               "version": "1.0.5",
-              "date-released": "$RELEASE_DATE"
+              "date-released": "${RELEASE_DATE}"
             }
