@@ -27,8 +27,21 @@ jobs:
           targetBranch: feature/update-cff
           createPR: false
           commitChange: true
-          message: 'updated CITATION.cff'
+          message: 'updated version number in CITATION.cff'
           changes: |
             {
               "version": "1.0.6"
+            }
+      - name: edit release date
+        uses: fjogeleit/yaml-update-action@main
+        with:
+          valueFile: 'CITATION.cff'
+          branch: feature/update-cff
+          targetBranch: feature/update-cff
+          createPR: false
+          commitChange: true
+          message: 'updated release date in CITATION.cff'
+          changes: |
+            {
+              "release-date": "!!timestamp ${{ steps.date.outputs.time }}"
             }
