@@ -37,4 +37,4 @@ jobs:
         with:
           from-file: 'CITATION.cff'
           set: >-
-            {"date-released": "${{ steps.date.outputs.time }}"}
+            {"date\-released": "${{ steps.date.outputs.time }}"}
