@@ -16,6 +16,9 @@ jobs:
         uses: Kaven-Universe/github-action-current-date-time@v1
         with:
           format: "YYYY-MM-DD"
+      - name: Test time
+        run: |
+          echo "${{ steps.date.outputs.time }}"
       - name: edit version number
         uses: fjogeleit/yaml-update-action@main
         with:
