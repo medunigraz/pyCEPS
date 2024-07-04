@@ -24,7 +24,7 @@ jobs:
         with:
           valueFile: 'CITATION.cff'
           propertyPath: 'title'
-          value: "!!timestamp '${{ steps.date.outputs.time }}'"
+          value: "!!float '${{ steps.date.outputs.time }}'"
           branch: feature/update-cff
           targetBranch: feature/update-cff
           createPR: false
