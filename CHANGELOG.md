@@ -5,6 +5,7 @@
 ### Added
 
 - quick visualization of Carto studies, (#4) (Robert Arnold)
+- CITATION.cff
 
 ### Changed
 
