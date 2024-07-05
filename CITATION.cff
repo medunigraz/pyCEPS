@@ -6,7 +6,7 @@ abstract: pyCEPS provides an interface to import, visualize, and translate clini
 doi: 10.5281/zenodo.10606340
 url: https://github.com/medunigraz/pyCEPS
 version: 1.0.13
-date-released: '2024-01-01T00:00:00.000Z'
+date-released: '2024-07-05'
 authors:
   - family-names: Arnold
     given-names: Robert
