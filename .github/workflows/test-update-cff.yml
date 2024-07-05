@@ -23,3 +23,12 @@ jobs:
         uses: mikefarah/yq@master
         with:
           cmd: yq --inplace '.version = "1.0.13"' CITATION.cff
+      - name: Commit changes
+        uses: devops-infra/action-commit-push@master
+        with:
+          github_token: "${{ secrets.GITHUB_TOKEN }}"
+          add_timestamp: false
+          commit_prefix: "[AUTO]"
+          commit_message: "Updated CITATION.cff"
+          force: false
+          target_branch: feature/update-cff
