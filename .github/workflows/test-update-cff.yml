@@ -20,16 +20,6 @@ jobs:
         run: |
           echo "${{ steps.date.outputs.time }}"
       - name: edit version number
-        uses: fjogeleit/yaml-update-action@main
+        uses: mikefarah/yq@master
         with:
-          valueFile: 'CITATION.cff'
-          branch: feature/update-cff
-          targetBranch: feature/update-cff
-          createPR: false
-          commitChange: true
-          message: 'updated version number in CITATION.cff'
-          changes: |
-            {
-              "version": "1.0.9",
-              "date-released": "${{ steps.date.outputs.time }}"
-            }
+          cmd: yq -Y --in-place ".version = \"1.0.13\"" CITATION.cff
