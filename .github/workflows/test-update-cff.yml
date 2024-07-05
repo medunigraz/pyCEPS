@@ -19,10 +19,14 @@ jobs:
       - name: Test time
         run: |
           echo "${{ steps.date.outputs.time }}"
-      - name: edit version number
+      - name: update version number
         uses: mikefarah/yq@master
         with:
           cmd: yq --inplace '.version = "1.0.13"' CITATION.cff
+      - name: update release date
+        uses: mikefarah/yq@master
+        with:
+          cmd: yq --inplace '.date-released = "${{ steps.date.outputs.time }}"' CITATION.cff
       - name: Commit changes
         uses: devops-infra/action-commit-push@master
         with:
