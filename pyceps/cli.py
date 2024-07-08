@@ -143,6 +143,12 @@ def get_args():
         help='Visualize the study. This opens a local HTML page in the '
              'standard browser. NOTE: This will lock the console!'
     )
+    vis.add_argument(
+        '--quick',
+        action='store_true',
+        help='Quick preview of study contents.\n'
+             'NOTE: any other commands for import/export are ignored!'
+    )
 
     aio = parser.add_argument_group('Advanced Import/Export')
     aio.add_argument(
@@ -564,12 +570,59 @@ def execute_commands(args):
     return study, log_file
 
 
+def quick_visualization(args):
+    """
+    Quick inspection of studies.
+
+    NOTE: no import/export is performed and no log file is saved.
+
+    Raises:
+        argparse.ArgumentError : if study repository is not given
+        KeyError : if system is recognized
+
+    Returns:
+        None
+    """
+
+    if not args.study_repository:
+        raise argparse.ArgumentTypeError('Option --quick requires '
+                                         '--study-repository!'
+                                         )
+
+    if args.system == 'CARTO':
+        study = CartoStudy(args.study_repository,
+                           pwd=args.password,
+                           encoding=args.encoding)
+        study.visualize_car()
+    elif args.system == 'PRECISION':
+        study = PrecisionStudy(args.study_repository,
+                               pwd=args.password,
+                               encoding=args.encoding)
+    else:
+        raise KeyError('unknown EAM system specified!')
+
+
 def run():
     # get CL arguments from parser
     cl_args = get_args()
 
     # initialize logger and set downstream logger to same logging level
     log_fid, log_path = configure_logger(cl_args.logger_level)
+
+    # check if quick inspection is requested, this will skip the rest
+    if cl_args.quick:
+        # close handlers for logging
+        for handler in logger.handlers:
+            logger.removeHandler(handler)
+            handler.close()
+        logging.shutdown()
+        # remove temporary log files
+        os.close(log_fid)
+        os.remove(log_path)
+
+        quick_visualization(cl_args)
+
+        return
 
     # import the EP study
     ep_study = None

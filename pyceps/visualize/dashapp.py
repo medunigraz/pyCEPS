@@ -124,9 +124,12 @@ def get_dash_app(study, bgnd=None):
         point_selected = np.full(len(points), 0, dtype=int)
 
         # lesions
-        lesion_location = np.asarray(
-            [site.X for site in p_map.lesions.sites]
-        ).ravel().tolist()
+        if p_map.lesions is not None:
+            lesion_location = np.asarray(
+                [site.X for site in p_map.lesions.sites]
+            ).ravel().tolist()
+        else:
+            lesion_location = []
 
         # calc center of mass to set camera position right
         cg = p_map.surface.get_center_of_mass()
@@ -268,13 +271,20 @@ def get_dash_app(study, bgnd=None):
                      ]
         has_maps = len(surf_maps) > 0
         has_points = len(p_map.points) > 0
-        has_lesions = len(p_map.lesions.sites) > 0
+        has_lesions = (
+                p_map.lesions is not None
+                and len(p_map.lesions.sites) > 0
+        )
         has_ecg = any([len(p.ecg) > 0 for p in p_map.points])
 
         # get available RF indexes
-        rfi_names = [to_drop_option(name)
-                     for name in p_map.lesions.get_rfi_names()]
-        has_rfi = len(rfi_names) > 0
+        if has_lesions:
+            rfi_names = [to_drop_option(name)
+                         for name in p_map.lesions.get_rfi_names()]
+            has_rfi = len(rfi_names) > 0
+        else:
+            rfi_names = {}
+            has_rfi = False
 
         return (False,  # map info button enabled
                 not has_maps,       # surface map selection disabled

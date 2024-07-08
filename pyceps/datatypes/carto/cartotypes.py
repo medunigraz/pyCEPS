@@ -136,15 +136,24 @@ Fields:
 """
 
 RefAnnotationConfig = namedtuple('RefAnnotationConfig',
-                                 ['algorithm', 'connector'])
+                                 ['algorithm',
+                                  'connector',
+                                  'singleChannelCriterion']
+                                 )
 RefAnnotationConfig.__doc__ = """
 A namedtuple representing configuration of reference detection method.
 
 Fields:
-    Algorithm : int
-        algorithm used for detection of reference annotation. '1' is 
-        supposedly indicating energy operator calculated from V1-V6
-    Connector : int
+    algorithm : int
+        algorithm used for detection of reference annotation.
+        '0' is supposedly indicating single channel criterion (CS)
+        '1' is supposedly indicating energy operator calculated from V1-V6
+    connector : int
+        for algorithm '0' this is the channel number (see ECG export file)
+        for algorithm '1' this is ???
+        for unknown algorithm this is '-1'
+    singleChannelCriterion : int or None
+        only used if algorithm '0'
 """
 
 

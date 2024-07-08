@@ -45,7 +45,8 @@ from pyceps.fileio.cartoio import (
     read_force_file,
     read_visitag_file,
     read_paso_config, read_paso_correlations,
-    read_electrode_pos_file
+    read_electrode_pos_file,
+    read_car_file
 )
 from pyceps.datatypes.carto.cartotypes import (
     CartoUnits, Coloring, ColoringRange,
@@ -157,12 +158,20 @@ class CartoPoint(EPPoint):
             parent : CartoMap (optional)
                 the map this point belongs to
 
+        Raises:
+            TypeError : if parent is not of type CartoMap
+
         Returns:
             None
-
         """
 
-        super().__init__(name, coordinates=coordinates, parent=parent)
+        super().__init__(name, coordinates=coordinates, parent=None)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, CartoMap):
+            raise TypeError('Cannot set parent for CartoPoint of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
 
         # add Carto3 specific attributes
         self.pointFile = ''
@@ -335,12 +344,12 @@ class CartoPoint(EPPoint):
 
         """
 
-        if not self.latAnnotation:
+        if np.isnan(self.latAnnotation):
             log.warning('no activation annotation found for {}!'
                         .format(self.name)
                         )
             raise ValueError('Parameter mapAnnotation missing!')
-        if self.woi.size == 0 or not self.refAnnotation:
+        if self.woi.size == 0 or np.isnan(self.refAnnotation):
             log.warning('no woi and/or reference annotation found for {}!'
                         .format(self.name)
                         )
@@ -947,11 +956,20 @@ class CartoMap(EPMap):
             parent : CartoStudy (optional)
                 study this map belongs to
 
+        Raises:
+            TypeError : if parent is not of type CartoStudy
+
         Returns:
             None
         """
 
-        super().__init__(name, parent=parent)
+        super().__init__(name, parent=None)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, CartoStudy):
+            raise TypeError('Cannot set parent for CartoPoint of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
 
         # add Carto3 specific attributes
         self.studyXML = study_xml
@@ -1719,14 +1737,25 @@ class CartoMap(EPMap):
                                     .format(self.name))
         self.surfaceFile = filenames
         self.volume = float(map_item.get('Volume'))
-        self.RefAnnotationConfig = RefAnnotationConfig(
-            algorithm=int(
-                map_item.find('RefAnnotationConfig').get('Algorithm')
-            ),
-            connector=int(
-                map_item.find('RefAnnotationConfig').get('Connector')
+
+        # get configuration for reference detection
+        ref_item = map_item.find('RefAnnotationConfig')
+        if ref_item is not None:
+            algorithm = int(ref_item.get('Algorithm'))
+            sc_criterion = None
+            if algorithm == 0:
+                # single channel detection (probably CS signal)
+                connector = int(ref_item.get('Channel'))
+                sc_criterion = int(ref_item.get('SingleChannelCriterion'))
+            elif algorithm == 1:
+                connector = int(ref_item.get('Connector'))
+            else:
+                connector = -1
+            self.RefAnnotationConfig = RefAnnotationConfig(
+                algorithm=algorithm,
+                connector=connector,
+                singleChannelCriterion=sc_criterion
             )
-        )
 
         # get map coloring range table
         colorRangeItem = map_item.find('ColoringRangeTable')
@@ -2161,6 +2190,7 @@ class CartoStudy(EPStudy):
         # check if any data was loaded
         if not len(sites) > 0:
             log.warning('no visitag data found in files! Aborting...')
+            return
 
         self.visitag.sites = sites
 
@@ -2660,7 +2690,7 @@ class CartoStudy(EPStudy):
 
             # load lesions
             lesions_item = proc.find('Lesions')
-            if mesh_item:
+            if lesions_item:
                 new_map.lesions = Lesions.load_from_xml(lesions_item)
             else:
                 log.info('no lesion data found in XML')
@@ -3103,3 +3133,113 @@ class CartoStudy(EPStudy):
 
         # XML was nowhere to be found
         return None
+
+    def visualize_car(self) -> None:
+        """
+        Quick visualization using CAR info.
+
+        Parameters:
+
+        Raises:
+
+        Returns:
+            None
+        """
+
+        log.info('visualizing study in quick mode')
+
+        # locate study XML to get proper root
+        study_info = self.locate_study_xml(self.repository, pwd=self.pwd,
+                                           encoding=self.encoding)
+        if not study_info:
+            log.warning('cannot locate study XML!')
+            return
+
+        self.studyXML = study_info['xml']
+        self.name = study_info['name']
+
+        xml_file = self.repository.join(self.studyXML)
+        with self.repository.open(xml_file) as fid:
+            root = ET.parse(fid).getroot()
+
+        for map_item in root.find('Maps').findall('Map'):
+            map_name = map_item.get('Name')
+            log.info('reading map {}'.format(map_name))
+
+            # find CAR data
+            car_file = self.repository.list_dir(
+                self.repository.join(''),
+                regex=r'{}_car.txt'.format(map_name)
+            )
+            if len(car_file) != 1:
+                log.warning('no/multiple CAR files found!')
+                continue
+            car_file = car_file[0]
+
+            # find mesh file
+            mesh_file = self.repository.list_dir(
+                self.repository.join(''),
+                regex=r'{}'.format(map_item.get('FileNames'))
+            )
+            if len(mesh_file) != 1:
+                log.warning('no/multiple Mesh files found!')
+                continue
+            mesh_file = mesh_file[0]
+
+            # build CartoMap
+            cmap = CartoMap(name=map_name, study_xml='', parent=self)
+
+            # read data
+            with (self.repository.open(self.repository.join(car_file)) as fid):
+                _, data = read_car_file(fid, encoding=self.encoding)
+            with self.repository.open(self.repository.join(mesh_file)) as fid:
+                cmap.surface = read_mesh_file(fid, encoding=self.encoding)
+
+            # build points
+            n_points = data.shape[0]
+            for i, point in enumerate(data):
+                p_name = '{}{}'.format(point[0], point[1])
+                # update progress bar
+                console_progressbar(
+                    i + 1, n_points,
+                    suffix='Loading point {}'.format(p_name)
+                )
+
+                new_point = CartoPoint(
+                    name=p_name,
+                    coordinates=point[2:5].astype(np.single),
+                    parent=cmap
+                )
+                # get projected point on surface
+                prjX, _, _ = cmap.surface.get_closest_vertex(
+                    [new_point.recX]
+                )
+                # add attributes
+                new_point.prjX = prjX[0]
+                new_point.uniVoltage = point[5].astype(np.single)
+                new_point.bipVoltage = point[6].astype(np.single)
+                new_point.latAnnotation = (point[10].astype(int)
+                                           + point[7].astype(int)
+                                           )
+                new_point.woi = point[8:10].astype(int)
+                new_point.refAnnotation = point[10].astype(int)
+
+                # add point to map
+                cmap.points.append(new_point)
+
+            # import lesions
+            cmap.import_lesions()
+
+            # build surface maps
+            if not cmap.surface.get_map_names():
+                cmap.interpolate_data('uni')
+                cmap.interpolate_data('bip')
+                cmap.interpolate_data('lat')
+
+            # add map to study
+            self.mapNames.append(map_name)
+            self.mapPoints.append(len(cmap.points))
+            self.maps[map_name] = cmap
+
+        # visualize using standard interface
+        self.visualize()

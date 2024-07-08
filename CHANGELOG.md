@@ -4,9 +4,18 @@
 
 ### Added
 
+- quick visualization of Carto studies, (#4) (Robert Arnold)
+- CITATION.cff
+
 ### Changed
 
 ### Fixed
+
+- visualization error if no lesion data is available (Robert Arnold)
+- ambiguity for annotation times 0 and NaN in CartoPoint (Robert Arnold)
+- export error if no VisiTag sites were loaded/found (Robert Arnold)
+- load error if no lesion data in .pyceps file (Robert Arnold)
+- import error for single channel reference annotation config (algorithm = 0) (Robert Arnold)
 
 ### Removed
 

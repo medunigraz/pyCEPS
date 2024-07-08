@@ -23,6 +23,15 @@
 
   "title": "pyCEPS",
 
+  "related_identifiers": [
+    {
+      "scheme": "doi",
+      "identifier": "10.1016/j.cmpb.2024.108299",
+      "relation": "isDocumentedBy",
+      "resource_type": "publication-article"
+    }
+  ],
+
   "keywords": [
     "electroanatomic mapping",
     "computational modeling",
