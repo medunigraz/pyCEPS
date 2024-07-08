@@ -115,7 +115,7 @@ class EPPoint:
 
         """
 
-        if not issubclass(type(parent), EPMap):
+        if parent is not None and not issubclass(type(parent), EPMap):
             raise TypeError('Cannot set parent for EPPoint of type {}'
                             .format(type(parent)))
 
@@ -274,7 +274,7 @@ class EPMap:
 
         """
 
-        if not issubclass(type(parent), EPStudy):
+        if parent is not None and not issubclass(type(parent), EPStudy):
             raise TypeError('Cannot set parent for EPMap of type {}'
                             .format(type(parent)))
 
@@ -1000,11 +1000,11 @@ class EPMap:
             None
         """
 
-        if not self.lesions and not len(self.lesions.sites) > 0:
+        log.info('exporting lesion(s) data...')
+
+        if self.lesions is None or not len(self.lesions.sites) > 0:
             log.info('no lesion data found for map {}'.format(self.name))
             return
-
-        log.info('exporting lesion(s) data...')
 
         writer = FileWriter()
 
@@ -1488,7 +1488,7 @@ class EPStudy:
             xml_add_binary_bsecg(proc, cmap.bsecg)
 
             # add lesion data
-            if cmap.lesions:
+            if cmap.lesions is not None:
                 cmap.lesions.add_to_xml(proc)
 
         return root, filepath

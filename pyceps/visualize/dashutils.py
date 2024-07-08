@@ -186,6 +186,10 @@ def get_point_egm_figure(point, bgnd='rgb(255, 255, 255)'):
 
     """
 
+    # check if EGM data is available
+    if point.egmBip is None and point.egmUni is None and point.egmRef is None:
+        return empty_figure(bgnd='rgb(255, 255, 255)')
+
     fig = make_subplots(rows=3, cols=1,
                         shared_xaxes=True,
                         shared_yaxes=False,

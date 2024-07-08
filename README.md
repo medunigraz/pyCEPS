@@ -14,6 +14,15 @@ EnSite Precision<sup>&trade;</sup> (Abbot).
 ## How To Cite
 
 If you use this software, please consider citing:
+> @article{Arnold_pyCEPS_A_cross-platform_2024,
+  author = {Arnold, Robert and Prassl, Anton J. and Neic, Aurel and Thaler, Franz and Augustin, Christoph M. and Gsell, Matthias A.F. and Gillette, Karli and Manninger, Martin and Scherr, Daniel and Plank, Gernot},
+  doi = {10.1016/j.cmpb.2024.108299},
+  journal = {Computer Methods and Programs in Biomedicine},
+  title = {{pyCEPS: A cross-platform electroanatomic mapping data to computational model conversion platform for the calibration of digital twin models of cardiac electrophysiology}},
+  volume = {254},
+  year = {2024}
+}
+
 > @software{arnold_2024_10606341,
   author       = {Arnold, Robert and
                   Prassl, Anton J and
@@ -68,6 +77,14 @@ pyceps --study-file "path_to_file" --visualize ...
 pyceps --study-file "path_to_file" --visualize ...
 ```
 
+### Quick preview of studies
+EAM data sets can be quickly visualized to preview anatomical shells, recording 
+point locations, and ablation lesions:
+```shell
+pyceps --system "carto" --study-repository "path_to_repository" --quick
+```
+> Note: Any other input/output arguments will be ignored!
+
 ## Saving a reduced version of EAM data
 Upon import of EAM data, a data representation is built which can be saved to
 disk for later usage.
@@ -82,6 +99,15 @@ The file is automatically saved in the folder above the repository path
 (if EAM data resides in a folder), or in the same folder if data is imported
 from ZIP archives.
 Optionally, a different location can be given.
+
+By default, any ECG data associated with recording points is not saved in the 
+output file.
+If you wish to save ECG data as well for later usage and/or visualization you 
+can add the option
+```shell
+--keep-ecg
+```
+> Note: files will grow drastically in size if many recording points are present
 
 ## Visualizing the data
 Once a data set was imported/loaded it can be visualized using a local HTML
