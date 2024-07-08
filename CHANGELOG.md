@@ -15,7 +15,7 @@
 ### Added
 
 - quick visualization of Carto studies, (#4) (Robert Arnold)
-- CITATION.cff
+- CITATION.cff (Robert Arnold)
 
 ### Changed
 
