@@ -4,8 +4,18 @@
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [1.0.3] - 2024-07-08
+
+### Added
+
 - quick visualization of Carto studies, (#4) (Robert Arnold)
-- CITATION.cff
+- CITATION.cff (Robert Arnold)
 
 ### Changed
 
@@ -151,6 +161,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
 [1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2
 [1.0.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.1
 [1.0.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.0
