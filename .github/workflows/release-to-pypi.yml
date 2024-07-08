@@ -28,7 +28,7 @@ jobs:
       - name: update CFF version number
         uses: mikefarah/yq@master
         with:
-          cmd: yq --inplace '.version = "${RELEASE_VERSION}"' CITATION.cff
+          cmd: yq --inplace '.version = ${RELEASE_VERSION}' CITATION.cff
       - name: update CFF release date
         uses: mikefarah/yq@master
         with:
