@@ -1005,7 +1005,7 @@ class CartoMap(EPMap):
             None
         """
 
-        self._import_attributes()
+        self.import_attributes()
         self.surface = self.load_mesh()
 
         # check if parent study was imported or loaded
@@ -1694,7 +1694,7 @@ class CartoMap(EPMap):
 
         return MapRF(force=rf_force, ablation_parameters=rf_abl)
 
-    def _import_attributes(
+    def import_attributes(
             self
     ) -> None:
         """
