@@ -4,9 +4,15 @@
 
 ### Added
 
+- example script to export entire EGM data (Robert Arnold)
+
 ### Changed
 
+- made function call unprotected: CartoPoint.import_attributes() (Robert Arnold)
+
 ### Fixed
+
+- error when creating nested output folders (Robert Arnold)
 
 ### Removed
 
