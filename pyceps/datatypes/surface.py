@@ -263,7 +263,7 @@ class Surface:
 
     def has_points(
             self
-    ) -> int:
+    ) -> bool:
         """Check if there are any vertices/faces in this surface."""
 
         return len(self.X) > 0
@@ -487,6 +487,7 @@ class Surface:
         writer = FileWriter()
 
         writer.dump(filename + '.pts', self.X)
+        # TODO: add region labels/tags to .elem export
         writer.dump(filename + '.elem', self.tris)
 
         return filename
@@ -627,8 +628,8 @@ class Surface:
                         )
             return None
 
-        numVerts = element.get('numVertices')
-        numTris = element.get('numTriangles')
+        numVerts = int(element.get('numVertices'))
+        numTris = int(element.get('numTriangles'))
 
         verts = [x for x in element.findall('DataArray')
                  if x.get('name') == 'vertices'][0]

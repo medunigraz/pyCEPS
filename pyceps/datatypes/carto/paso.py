@@ -512,7 +512,7 @@ class PaSo:
         # load PaSo templates
         templates = []
         templates_item = element.find('Templates')
-        num_templates = templates_item.get('count')
+        num_templates = int(templates_item.get('count'))
         for template in templates_item.iter('Template'):
             new = PaSoTemplate()
             new.ID = int(template.get('ID'))
@@ -544,7 +544,7 @@ class PaSo:
         # load PaSo correlations
         correlations = []
         templates_item = element.find('Correlations')
-        num_correlations = templates_item.get('count')
+        num_correlations = int(templates_item.get('count'))
         for correlation in templates_item.iter('Correlation'):
             new = PaSoCorrelation()
 
@@ -570,8 +570,8 @@ class PaSo:
 
         # final sanity check
         if not len(correlations) == num_correlations:
-            log.warning('number of templates expected {} differs from '
-                        'templates loaded {}!'
+            log.warning('number of correlations expected {} differs from '
+                        'correlations loaded {}!'
                         .format(num_correlations, len(correlations)))
 
         return cls(

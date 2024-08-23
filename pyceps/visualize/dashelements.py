@@ -461,6 +461,27 @@ def get_controls(surf_colormap_name):
                                 dbc.Col(dbc.Label('Invalid'), width=3),
                             ],
                         ),
+                        dbc.Row(
+                            justify='left',
+                            children=[
+                                dbc.Col(
+                                    dbc.Label(
+                                        'Point Select:',
+                                        size='sm',
+                                        style={
+                                            'fontSize': 12
+                                        }
+                                    ),
+                                    width=4,
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        id='point-select',
+                                        disabled=True,
+                                    ),
+                                ),
+                            ],
+                        ),
                     ],
                 ),
             ]
@@ -577,7 +598,43 @@ def get_controls(surf_colormap_name):
                     ]
                 )
             ]
-        )
+        ),
+
+        html.Br(),
+
+        # ECGs
+        dbc.Card(
+            children=[
+                dbc.CardHeader(
+                    'ECG',
+                    style={
+                        'fontSize': 12,
+                        'fontWeight': 'bold',
+                    }
+                ),
+                dbc.CardBody(
+                    style={'fontSize': 12},
+                    children=[
+                        dbc.Row(
+                            justify='center',
+                            children=[
+                                dbc.Col(dbc.Label('Map'), width=3),
+                                dbc.Col(
+                                    dbc.Switch(
+                                        id='point-ecg',
+                                        # label='Visible?',
+                                        value=False,
+                                        disabled=True
+                                    ),
+                                    width=2
+                                ),
+                                dbc.Col(dbc.Label('Point'), width=3),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        ),
     ]
 
 

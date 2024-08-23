@@ -1,0 +1,62 @@
+cff-version: 1.2.0
+message: If you use this software, please cite the paper describing it as below. Specific versions of the software can additionally be referenced using individual DOIs.
+type: software
+title: pyCEPS
+abstract: pyCEPS provides an interface to import, visualize, and translate clinical mapping data.
+doi: 10.5281/zenodo.10606340
+url: https://github.com/medunigraz/pyCEPS
+version: 1.0.3
+date-released: "2024-07-08"
+authors:
+  - family-names: Arnold
+    given-names: Robert
+    orcid: https://orcid.org/0000-0002-0524-9812
+  - family-names: Prassl
+    given-names: Anton J.
+    orcid: https://orcid.org/0000-0002-1920-1377
+license: GPL-3.0
+license-url: https://www.gnu.org/licenses/gpl-3.0.html.en
+repository-code: https://github.com/medunigraz/pyCEPS
+preferred-citation:
+  type: article
+  doi: 10.1016/j.cmpb.2024.108299
+  title: "pyCEPS: A cross-platform electroanatomic mapping data to computational model conversion platform for the calibration of digital twin models of cardiac electrophysiology"
+  journal: Computer Methods and Programs in Biomedicine
+  volume: 254
+  year: 2024
+  pages: '108299'
+  authors:
+    - family-names: Arnold
+      given-names: Robert
+      orcid: https://orcid.org/0000-0002-0524-9812
+    - family-names: Prassl
+      given-names: Anton J.
+      orcid: https://orcid.org/0000-0002-1920-1377
+    - family-names: Neic
+      given-names: Aurel
+      orcid: https://orcid.org/0000-0002-5192-1307
+    - family-names: Thaler
+      given-names: Franz
+      orcid: https://orcid.org/0000-0002-6589-6560
+    - family-names: Augustin
+      given-names: Christoph M.
+      orcid: https://orcid.org/0000-0001-6341-4014
+    - family-names: Gsell
+      given-names: Matthias A.F.
+      orcid: https://orcid.org/0000-0001-7742-8193
+    - family-names: Gillette
+      given-names: Karli
+      orcid: https://orcid.org/0000-0002-0420-5375
+    - family-names: Manninger
+      given-names: Martin
+      orcid: https://orcid.org/0000-0002-0545-4373
+    - family-names: Scherr
+      given-names: Daniel
+      orcid: https://orcid.org/0000-0001-5868-5493
+    - family-names: Plank
+      given-names: Gernot
+      orcid: https://orcid.org/0000-0002-7380-6908
+identifiers:
+  - description: This is the archived snapshot of pyCEPS
+    type: doi
+    value: 10.5281/zenodo.10606340

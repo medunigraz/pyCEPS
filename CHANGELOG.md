@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- example script to export entire EGM data (Robert Arnold)
+- import/export of additional beat annotations in reference channel (Robert Arnold)
+
+### Changed
+
+- made function call unprotected: CartoPoint.import_attributes() (Robert Arnold)
+
+### Fixed
+
+- error when creating nested output folders (Robert Arnold)
+
+### Removed
+
+## [1.0.3] - 2024-07-08
+
+### Added
+
+- quick visualization of Carto studies, (#4) (Robert Arnold)
+- CITATION.cff (Robert Arnold)
+
+### Changed
+
+### Fixed
+
+- visualization error if no lesion data is available (Robert Arnold)
+- ambiguity for annotation times 0 and NaN in CartoPoint (Robert Arnold)
+- export error if no VisiTag sites were loaded/found (Robert Arnold)
+- load error if no lesion data in .pyceps file (Robert Arnold)
+- import error for single channel reference annotation config (algorithm = 0) (Robert Arnold)
+
+### Removed
+
+
+## [1.0.2] - 2024-06-11
+
+### Added
+
+- type hints and documentation (Robert Arnold)
+- support for region tags in .elem files (Robert Arnold)
+- support for frames in dat_t and pts_t files (Robert Arnold)
+- EPPoint attribute ecg for optimized ECG loading (Robert Arnold)
+- CLI argument --keep-ecg to save ECGs to .pyceps (Robert Arnold)
+- visualization of point ECGs in dash (#3) (Robert Arnold)
+- import Carto3 PaSo data (Robert Arnold)
+- export files to folder given with --save-study (#2) (Robert Arnold)
+- support for frames in dat_t and pts_t files (Robert Arnold)
+- support for region tags in .elem files (Robert Arnold)
+
+### Changed
+
+- some function names for clarity (load vs. import) (Robert Arnold)
+- changed key for BSECG JSON files from "bsecg" to "ecg" (Robert Arnold)
+- py7zr >= 0.21.0 is now required (Robert Arnold)
+
+### Fixed
+
+- wrong time dimension in IGB files (Robert Arnold)
+- connector file names in newer Carto3 export format (Robert Arnold)
+- error if basepath stored in .pyceps cannot be reached (Robert Arnold)
+- disappearing lesions in dash for multiple RFI metrics (Robert Arnold)
+
+
 ## [1.0.1] - 2024-04-16
 
 ### Added
@@ -16,6 +82,7 @@
 - load .pyceps with no additional meshes (Robert Arnold)
 - load .pyceps with maps without points (Robert Arnold)
 - import of point impedance and contact force data (Robert Arnold)
+
 
 ## [1.0.0] - 2024-04-10
 
@@ -41,6 +108,7 @@
 
 _Old .pkl files are not supported anymore!_
 
+
 ## [0.1.1] - 2024-04-02
 
 ### Changed
@@ -51,6 +119,7 @@ _Old .pkl files are not supported anymore!_
 
 - Set proper study root if data repository is not reachable (Robert Arnold)
 - Import only specific maps if given as CLI command (Robert Arnold)
+
 
 ## [0.1.0] - 2024-03-11
 
@@ -70,11 +139,13 @@ _Old .pkl files are not supported anymore!_
 - Import maps with zero points (Robert Arnold)
 - Unintentionally skipped lines in VisiTag files (Robert Arnold)
 
+
 ## [0.0.3] - 2024-02-14
 
 ### Fixed
 
 - Missing colormaps.json (Robert Arnold)
+
 
 ## [0.0.2] - 2024-02-14
 
@@ -92,10 +163,13 @@ _Old .pkl files are not supported anymore!_
 
 _This release was yanked on PyPi due to a missing file._
 
+
 ## [0.0.1] - 2024-02-01
 
 _Initial release._
 
+[1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
+[1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2
 [1.0.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.1
 [1.0.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.0
 [0.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/0.1.1

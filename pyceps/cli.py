@@ -127,7 +127,8 @@ def get_args():
         help='Save study as pyCEPS file.\n'
              'Default location is folder above study root, default name is '
              'study name e.g. <study_root>/../<study_name>.pyceps\n'
-             'Custom location and file name can be given alternatively.'
+             'Custom location and file name can be given alternatively. All '
+             'export files are redirected to this location.'
     )
     bio.add_argument(
         '--keep-ecg',
@@ -141,6 +142,12 @@ def get_args():
         action='store_true',
         help='Visualize the study. This opens a local HTML page in the '
              'standard browser. NOTE: This will lock the console!'
+    )
+    vis.add_argument(
+        '--quick',
+        action='store_true',
+        help='Quick preview of study contents.\n'
+             'NOTE: any other commands for import/export are ignored!'
     )
 
     aio = parser.add_argument_group('Advanced Import/Export')
@@ -397,41 +404,55 @@ def load_study(args):
 def export_map_data(study, map_name, args):
     """Export data for specified maps."""
 
+    # handle explicit export location
+    out_path = ''
+    if args.save_study:
+        out_path = '' if args.save_study == 'DEFAULT' else args.save_study
+    out_path = study.resolve_export_folder(os.path.dirname(out_path))
+
     # save carto mesh
     if args.dump_mesh:
-        study.maps[map_name].export_mesh_carp()
+        study.maps[map_name].export_mesh_carp(out_path)
         surf_maps = study.maps[map_name].surface.get_map_names()
         surf_labels = study.maps[map_name].surface.get_label_names()
-        study.maps[map_name].export_mesh_vtk(maps_to_add=surf_maps,
-                                             labels_to_add=surf_labels)
+        study.maps[map_name].export_mesh_vtk(output_folder=out_path,
+                                             maps_to_add=surf_maps,
+                                             labels_to_add=surf_labels
+                                             )
 
     # dump point data for recording points
     if args.dump_point_data:
-        study.maps[map_name].export_point_data()
-        study.maps[map_name].export_point_info()
+        study.maps[map_name].export_point_data(out_path)
+        study.maps[map_name].export_point_info(out_path)
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:
         study.maps[map_name].export_point_ecg(
+            output_folder=out_path,
             which=(None if args.dump_point_ecgs == 'DEFAULT'
                    else args.dump_point_ecgs)
         )
 
     # dump EGM traces for recording points
     if args.dump_point_egms:
-        study.maps[map_name].export_point_egm()
+        study.maps[map_name].export_point_egm(out_path)
 
     # dump representative ECGs for map
     if args.dump_map_ecgs:
-        study.maps[map_name].export_map_ecg()
+        study.maps[map_name].export_map_ecg(out_path)
 
     # dump surface signal maps to DAT
     if args.dump_surface_maps:
-        study.maps[map_name].export_signal_maps()
+        study.maps[map_name].export_signal_maps(out_path)
 
     # export lesion data
     if args.dump_lesions:
-        study.maps[map_name].export_lesions()
+        study.maps[map_name].export_lesions(out_path)
+
+    # check if additional meshes are part of the study
+    if study.meshes and args.dump_mesh:
+        logger.info('found additional meshes in study, exporting...')
+        study.export_additional_meshes(out_path)
 
 
 def execute_commands(args):
@@ -474,7 +495,7 @@ def execute_commands(args):
                               egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
-                study.maps[map_name].import_lesions(directory=None)
+                study.maps[map_name].import_lesions(directory='')
             data_changed = True
 
     # work out which map(s) to process
@@ -517,11 +538,6 @@ def execute_commands(args):
         logger.info('exporting data for map {}'.format(map_name))
         export_map_data(study, map_name, args)
 
-    # check if additional meshes are part of the study
-    if study.meshes and args.dump_mesh:
-        logger.info('found additional meshes in study, exporting...')
-        study.export_additional_meshes()
-
     # save study
     if not args.save_study and data_changed:
         logger.debug('unsaved changes found!')
@@ -554,12 +570,59 @@ def execute_commands(args):
     return study, log_file
 
 
+def quick_visualization(args):
+    """
+    Quick inspection of studies.
+
+    NOTE: no import/export is performed and no log file is saved.
+
+    Raises:
+        argparse.ArgumentError : if study repository is not given
+        KeyError : if system is recognized
+
+    Returns:
+        None
+    """
+
+    if not args.study_repository:
+        raise argparse.ArgumentTypeError('Option --quick requires '
+                                         '--study-repository!'
+                                         )
+
+    if args.system == 'CARTO':
+        study = CartoStudy(args.study_repository,
+                           pwd=args.password,
+                           encoding=args.encoding)
+        study.visualize_car()
+    elif args.system == 'PRECISION':
+        study = PrecisionStudy(args.study_repository,
+                               pwd=args.password,
+                               encoding=args.encoding)
+    else:
+        raise KeyError('unknown EAM system specified!')
+
+
 def run():
     # get CL arguments from parser
     cl_args = get_args()
 
     # initialize logger and set downstream logger to same logging level
     log_fid, log_path = configure_logger(cl_args.logger_level)
+
+    # check if quick inspection is requested, this will skip the rest
+    if cl_args.quick:
+        # close handlers for logging
+        for handler in logger.handlers:
+            logger.removeHandler(handler)
+            handler.close()
+        logging.shutdown()
+        # remove temporary log files
+        os.close(log_fid)
+        os.remove(log_path)
+
+        quick_visualization(cl_args)
+
+        return
 
     # import the EP study
     ep_study = None
