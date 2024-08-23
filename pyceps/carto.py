@@ -127,6 +127,11 @@ class CartoPoint(EPPoint):
             full contact force data for this point
         impedanceData : PointImpedance
             full impedance data for this point
+        refCycleLength : int
+            cycle length in Samples derived from reference channel
+        refBeatAnnotations : List(int)
+            beat annotations in reference channel in Samples. Annotations
+            are in reverse order!
 
     Methods:
         is_valid()
@@ -181,6 +186,8 @@ class CartoPoint(EPPoint):
         self.forceFile = ''
         self.forceData = None
         self.impedanceData = None
+        self.refCycleLength = np.iinfo(int).min
+        self.refBeatAnnotations = []
 
     def import_point(
             self,
