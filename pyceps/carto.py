@@ -336,6 +336,25 @@ class CartoPoint(EPPoint):
         except AttributeError:
             log.debug('No force data saved for point {}'.format(self.name))
 
+        # get annotations for all beats in reference channel
+        log.debug('reading all beat annotations for reference channel')
+        ref_annotation_item = root.find('ReferenceAnnotations')
+        if ref_annotation_item is not None:
+            for item in ref_annotation_item.items():
+                if item[0].startswith('Beat'):
+                    self.refBeatAnnotations.append(int(item[1]))
+                elif item[0] == 'CycleLength':
+                    self.refCycleLength = int(item[1])
+                else:
+                    log.warning('unknown attribute found in reference beat '
+                                'annotations for point {}'
+                                .format(self.name)
+                                )
+        else:
+            log.debug('No additional beat annotations found for point {}'
+                      .format(self.name)
+                      )
+
     def is_valid(
             self
     ) -> bool:
