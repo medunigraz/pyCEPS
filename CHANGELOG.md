@@ -5,6 +5,7 @@
 ### Added
 
 - example script to export entire EGM data (Robert Arnold)
+- import/export of additional beat annotations in reference channel (Robert Arnold)
 
 ### Changed
 
