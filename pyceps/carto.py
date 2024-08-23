@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
-from itertools import compress
+from itertools import compress, zip_longest
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
@@ -1424,6 +1424,11 @@ class CartoMap(EPMap):
             REF : reference annotation
             WOI_START : window of interest, relative to REF
             WOI_END : window of interest, relative to REF
+            CYCLE_LENGTH : cycle length determined in reference channel
+            REF_ANNOTATIONS : all beat annotations in reference channel
+                NOTE: This is exported as JSON dictionary with point names
+                as key and annotations in reverse order (last beat
+                annotation is first entry)
 
         By default, data from all valid points is exported, but also a
         list of EPPoints to use can be given.
@@ -1480,6 +1485,24 @@ class CartoMap(EPMap):
         dat_file = '{}.ptdata.WOI_END.pc.dat'.format(basename)
         f = writer.dump(dat_file, data)
         log.info('exported point WOI (end) to {}'.format(f))
+
+        # export cycle length for reference channel
+        data = np.array([point.refCycleLength for point in points])
+        if not np.all(data == np.iinfo(int).min):
+            dat_file = '{}.ptdata.CYCLE_LENGTH.pc.dat'.format(basename)
+            f = writer.dump(dat_file, data)
+            log.info('exported point cycle length to {}'.format(f))
+
+        # export additional beat annotations for reference channel
+        annotations_json = dict()
+        for p in points:
+            annotations_json[p.name] = p.refBeatAnnotations
+        if any(annotations_json.values()):
+            igb_file = '{}.ptdata.REF_ANNOTATIONS.pc.json'.format(basename)
+            f = writer.dump(igb_file, annotations_json, indent=2)
+            log.info('exported point reference beat annotations to {}'
+                     .format(f)
+                     )
 
         return
 
