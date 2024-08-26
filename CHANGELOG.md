@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.0.4] - 2024-08-26
 
 ### Added
 
@@ -169,6 +169,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.0.4]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.4
 [1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
 [1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2
 [1.0.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.1
