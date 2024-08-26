@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
-from itertools import compress
+from itertools import compress, zip_longest
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
@@ -127,6 +127,11 @@ class CartoPoint(EPPoint):
             full contact force data for this point
         impedanceData : PointImpedance
             full impedance data for this point
+        refCycleLength : int
+            cycle length in Samples derived from reference channel
+        refBeatAnnotations : List(int)
+            beat annotations in reference channel in Samples. Annotations
+            are in reverse order!
 
     Methods:
         is_valid()
@@ -181,6 +186,8 @@ class CartoPoint(EPPoint):
         self.forceFile = ''
         self.forceData = None
         self.impedanceData = None
+        self.refCycleLength = np.iinfo(int).min
+        self.refBeatAnnotations = []
 
     def import_point(
             self,
@@ -328,6 +335,25 @@ class CartoPoint(EPPoint):
                 log.debug('No force file found for point {}'.format(self.name))
         except AttributeError:
             log.debug('No force data saved for point {}'.format(self.name))
+
+        # get annotations for all beats in reference channel
+        log.debug('reading all beat annotations for reference channel')
+        ref_annotation_item = root.find('ReferenceAnnotations')
+        if ref_annotation_item is not None:
+            for item in ref_annotation_item.items():
+                if item[0].startswith('Beat'):
+                    self.refBeatAnnotations.append(int(item[1]))
+                elif item[0] == 'CycleLength':
+                    self.refCycleLength = int(item[1])
+                else:
+                    log.warning('unknown attribute found in reference beat '
+                                'annotations for point {}'
+                                .format(self.name)
+                                )
+        else:
+            log.debug('No additional beat annotations found for point {}'
+                      .format(self.name)
+                      )
 
     def is_valid(
             self
@@ -1005,7 +1031,7 @@ class CartoMap(EPMap):
             None
         """
 
-        self._import_attributes()
+        self.import_attributes()
         self.surface = self.load_mesh()
 
         # check if parent study was imported or loaded
@@ -1398,6 +1424,11 @@ class CartoMap(EPMap):
             REF : reference annotation
             WOI_START : window of interest, relative to REF
             WOI_END : window of interest, relative to REF
+            CYCLE_LENGTH : cycle length determined in reference channel
+            REF_ANNOTATIONS : all beat annotations in reference channel
+                NOTE: This is exported as JSON dictionary with point names
+                as key and annotations in reverse order (last beat
+                annotation is first entry)
 
         By default, data from all valid points is exported, but also a
         list of EPPoints to use can be given.
@@ -1454,6 +1485,24 @@ class CartoMap(EPMap):
         dat_file = '{}.ptdata.WOI_END.pc.dat'.format(basename)
         f = writer.dump(dat_file, data)
         log.info('exported point WOI (end) to {}'.format(f))
+
+        # export cycle length for reference channel
+        data = np.array([point.refCycleLength for point in points])
+        if not np.all(data == np.iinfo(int).min):
+            dat_file = '{}.ptdata.CYCLE_LENGTH.pc.dat'.format(basename)
+            f = writer.dump(dat_file, data)
+            log.info('exported point cycle length to {}'.format(f))
+
+        # export additional beat annotations for reference channel
+        annotations_json = dict()
+        for p in points:
+            annotations_json[p.name] = p.refBeatAnnotations
+        if any(annotations_json.values()):
+            igb_file = '{}.ptdata.REF_ANNOTATIONS.pc.json'.format(basename)
+            f = writer.dump(igb_file, annotations_json, indent=2)
+            log.info('exported point reference beat annotations to {}'
+                     .format(f)
+                     )
 
         return
 
@@ -1694,7 +1743,7 @@ class CartoMap(EPMap):
 
         return MapRF(force=rf_force, ablation_parameters=rf_abl)
 
-    def _import_attributes(
+    def import_attributes(
             self
     ) -> None:
         """
@@ -2852,6 +2901,90 @@ class CartoStudy(EPStudy):
 
         log.info('saved study to {}'.format(filepath))
         return filepath
+
+    def export_paso(
+            self,
+            output_folder: str = '',
+    ) -> None:
+        """
+        Export PaSo template matching data.
+
+        PaSo templates are exported as JSON
+        Naming convention:
+            <study_name>.paso.RefTemplate_FULL.json
+            <study_name>.paso.RefTemplate_BEAT.json
+
+        If no filename is specified, export all templates to folder "paso"
+        above the study_root.
+
+        Parameters:
+            output_folder: str (optional)
+                path of exported files
+
+        Returns:
+            None
+        """
+
+        log.info('exporting PaSo data...')
+
+        if not self.paso:
+            log.info('no PaSo data found in study, nothing to export')
+            return
+
+        basename = self.resolve_export_folder(
+            os.path.join(output_folder, 'paso')
+        )
+
+        # export data
+        writer = FileWriter()
+
+        data = [t for t in self.paso.Templates if t.isReference]
+        if len(data) != 1:
+            log.warning('found more than one reference templates in PaSo '
+                        'data, aborting...')
+        data = data[0]
+
+        # export full template
+        json_file = os.path.join(basename,
+                                 '{}.RefTemplate_FULL.json'.format(self.name)
+                                 )
+        # build timeline
+        t = np.linspace(start=0.0,
+                        stop=data.ecg[0].data.shape[0] / data.ecg[0].fs,
+                        num=data.ecg[0].data.shape[0]
+                        )
+        # build JSON dict
+        template_json = dict()
+        template_json['t'] = t.round(decimals=3).tolist()
+        data_dict = dict()
+        for signal in data.ecg:
+            data_dict[signal.name] = signal.data.tolist()
+        template_json['ecg'] = data_dict
+
+        f = writer.dump(json_file, template_json, indent=2)
+        log.info('exported full PaSo template to {}'.format(f))
+
+        # export reference beat template
+        json_file = os.path.join(basename,
+                                 '{}.RefTemplate_BEAT.json'.format(self.name)
+                                 )
+        start_idx = data.currentWOI[0] - data.timestamp[0]
+        end_idx = data.currentWOI[1] - data.timestamp[0]
+        data_length = end_idx - start_idx
+        # build timeline
+        t = np.linspace(start=0.0,
+                        stop=data_length / data.ecg[0].fs,
+                        num=data_length
+                        )
+        template_json = dict()
+        template_json['t'] = t.round(decimals=3).tolist()
+        data_dict = dict()
+        for signal in data.ecg:
+            data_dict[signal.name] = signal.data[start_idx:end_idx].tolist()
+        template_json['ecg'] = data_dict
+
+        f = writer.dump(json_file, template_json, indent=2)
+        log.info('exported PaSo beat template to {}'.format(f))
 
     def export_additional_meshes(
             self,

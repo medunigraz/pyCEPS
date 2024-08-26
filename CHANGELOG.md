@@ -1,12 +1,20 @@
 # Changelog
 
-## Unreleased
+## [1.0.4] - 2024-08-26
 
 ### Added
 
+- example script to export entire EGM data (Robert Arnold)
+- import/export of additional beat annotations in reference channel (Robert Arnold)
+- export of PaSo reference template for CARTO studies (Robert Arnold)
+
 ### Changed
 
+- made function call unprotected: CartoPoint.import_attributes() (Robert Arnold)
+
 ### Fixed
+
+- error when creating nested output folders (Robert Arnold)
 
 ### Removed
 
@@ -161,6 +169,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.0.4]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.4
 [1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
 [1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2
 [1.0.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.1
