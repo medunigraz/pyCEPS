@@ -1538,6 +1538,6 @@ class EPStudy:
         else:
             output_folder = os.path.abspath(output_folder)
             if not os.path.isdir(output_folder):
-                os.mkdir(output_folder)
+                os.makedirs(output_folder)
 
         return output_folder
