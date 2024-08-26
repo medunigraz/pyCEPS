@@ -232,6 +232,13 @@ def get_args():
         help='Export lesion data associated with current "--map".\n'
              'Default: <study_root>/../<map>.lesions.<RFI_name>.dat'
     )
+    aio.add_argument(
+        '--dump-paso',
+        action='store_true',
+        help='Export PaSo data associated with current "--map" to JSON.\n'
+             'NOTE: only available for Carto studies!'
+             'Default: <study_root>/../<map>.paso.RefTemplate_FULL.json'
+    )
 
     misc = parser.add_argument_group('Miscellaneous')
     misc.add_argument(
@@ -449,6 +456,13 @@ def export_map_data(study, map_name, args):
     if args.dump_lesions:
         study.maps[map_name].export_lesions(out_path)
 
+    # export paso data
+    if args.dump_paso:
+        if isinstance(study, CartoStudy):
+            study.export_paso(out_path)
+        else:
+            logger.info('PaSo data can only be exported for Carto studies')
+
     # check if additional meshes are part of the study
     if study.meshes and args.dump_mesh:
         logger.info('found additional meshes in study, exporting...')
@@ -532,6 +546,7 @@ def execute_commands(args):
         args.dump_map_ecgs = True
         args.dump_surface_maps = True
         args.dump_lesions = True
+        args.dump_paso = True
 
     # process selected map(s)
     for map_name in export_maps:
