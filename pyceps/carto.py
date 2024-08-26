@@ -2902,6 +2902,90 @@ class CartoStudy(EPStudy):
         log.info('saved study to {}'.format(filepath))
         return filepath
 
+    def export_paso(
+            self,
+            output_folder: str = '',
+    ) -> None:
+        """
+        Export PaSo template matching data.
+
+        PaSo templates are exported as JSON
+        Naming convention:
+            <study_name>.paso.RefTemplate_FULL.json
+            <study_name>.paso.RefTemplate_BEAT.json
+
+        If no filename is specified, export all templates to folder "paso"
+        above the study_root.
+
+        Parameters:
+            output_folder: str (optional)
+                path of exported files
+
+        Returns:
+            None
+        """
+
+        log.info('exporting PaSo data...')
+
+        if not self.paso:
+            log.info('no PaSo data found in study, nothing to export')
+            return
+
+        basename = self.resolve_export_folder(
+            os.path.join(output_folder, 'paso')
+        )
+
+        # export data
+        writer = FileWriter()
+
+        data = [t for t in self.paso.Templates if t.isReference]
+        if len(data) != 1:
+            log.warning('found more than one reference templates in PaSo '
+                        'data, aborting...')
+        data = data[0]
+
+        # export full template
+        json_file = os.path.join(basename,
+                                 '{}.RefTemplate_FULL.json'.format(self.name)
+                                 )
+        # build timeline
+        t = np.linspace(start=0.0,
+                        stop=data.ecg[0].data.shape[0] / data.ecg[0].fs,
+                        num=data.ecg[0].data.shape[0]
+                        )
+        # build JSON dict
+        template_json = dict()
+        template_json['t'] = t.round(decimals=3).tolist()
+        data_dict = dict()
+        for signal in data.ecg:
+            data_dict[signal.name] = signal.data.tolist()
+        template_json['ecg'] = data_dict
+
+        f = writer.dump(json_file, template_json, indent=2)
+        log.info('exported full PaSo template to {}'.format(f))
+
+        # export reference beat template
+        json_file = os.path.join(basename,
+                                 '{}.RefTemplate_BEAT.json'.format(self.name)
+                                 )
+        start_idx = data.currentWOI[0] - data.timestamp[0]
+        end_idx = data.currentWOI[1] - data.timestamp[0]
+        data_length = end_idx - start_idx
+        # build timeline
+        t = np.linspace(start=0.0,
+                        stop=data_length / data.ecg[0].fs,
+                        num=data_length
+                        )
+        template_json = dict()
+        template_json['t'] = t.round(decimals=3).tolist()
+        data_dict = dict()
+        for signal in data.ecg:
+            data_dict[signal.name] = signal.data[start_idx:end_idx].tolist()
+        template_json['ecg'] = data_dict
+
+        f = writer.dump(json_file, template_json, indent=2)
+        log.info('exported PaSo beat template to {}'.format(f))
+
     def export_additional_meshes(
             self,
             output_folder: str = ''
