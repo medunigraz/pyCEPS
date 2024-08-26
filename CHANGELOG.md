@@ -6,6 +6,7 @@
 
 - example script to export entire EGM data (Robert Arnold)
 - import/export of additional beat annotations in reference channel (Robert Arnold)
+- export of PaSo reference template for CARTO studies (Robert Arnold)
 
 ### Changed
 
