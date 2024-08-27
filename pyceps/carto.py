@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
-from itertools import compress, zip_longest
+from itertools import compress
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
