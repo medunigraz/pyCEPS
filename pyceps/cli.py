@@ -386,7 +386,7 @@ def load_study(args):
                                     password=args.password,
                                     repository_path=args.change_root
                                     )
-        elif args.system == 'precision':
+        elif system.lower() == 'precision':
             study = PrecisionStudy.load(args.study_file,
                                         password=args.password,
                                         repository_path=args.change_root
