@@ -536,9 +536,72 @@ class PrecisionStudy(EPStudy):
 
         return study
 
-        return [name for name in os.listdir(parent_dir)
-                if os.path.isdir(os.path.join(parent_dir, name))
-                ]
+    def save(
+            self,
+            filepath: str = '',
+            keep_ecg: bool = False
+    ) -> str:
+        """
+        Save study object as .pyceps archive.
+        Note: File is only created if at least one map was imported!
+
+        By default, the filename is the study's name, but can also be
+        specified by the user.
+        If the file already exists, user interaction is required to either
+        overwrite file or specify a new file name.
+
+        Parameters:
+            filepath : string (optional)
+                custom path for the output file
+            keep_ecg : bool
+                export point ECG data
+
+        Raises:
+            ValueError : If user input is not recognised
+
+        Returns:
+            str : file path .pyceps was saved to
+        """
+
+        if keep_ecg:
+            log.warning('saving point ECGs is not supported for Precision!')
+            keep_ecg = False
+
+        # add basic information to XML
+        root, filepath = super().save(filepath, keep_ecg=keep_ecg)
+        if not root:
+            # no base info was created (no maps imported), nothing to add
+            return filepath
+
+        # add Precision specific data
+        root.set('file_version', str(self.version))
+
+        for key, cmap in self.maps.items():
+            map_item = [p for p in root.iter('Procedure')
+                        if p.get('name') == key][0]
+
+            # add additional procedure info
+            map_item.set('location', cmap.location)
+
+            # add additional point info
+            point_item = map_item.find('Points')
+            to_add = ['displayed', 'utilized', 'exportedSeconds', 'endTime',
+                      'pNegativeVoltage', 'CFEMean', 'CFEstd'
+                      ]
+            for name in to_add:
+                data = [getattr(p, name) for p in cmap.points]
+                xml_add_binary_numpy(point_item, name, np.array(data))
+
+        # make XML pretty
+        dom = minidom.parseString(ET.tostring(root))
+        xml_string = dom.toprettyxml(encoding='utf-8')
+
+        # write XML
+        with open(filepath, 'wb') as fid:
+            fid.write(xml_string)
+
+        log.info('saved study to {}'.format(filepath))
+        return filepath
 
 
 class PrecisionMap(EPMap):
