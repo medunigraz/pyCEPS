@@ -980,7 +980,7 @@ class PrecisionPoint(EPPoint):
 
         super().__init__(name, coordinates=coordinates, parent=parent)
 
-        # add Carto3 specific attributes
+        # add Precision specific attributes
         self.catheterName = ''
         self.electrodeName = ''
 
