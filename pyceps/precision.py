@@ -227,7 +227,11 @@ class PrecisionStudy(EPStudy):
     def export_additional_meshes(self, *args, **kwargs):
         raise NotImplementedError
 
-    def is_root_valid(self, root_dir=None):
+    def is_root_valid(
+            self,
+            root_dir: str = '',
+            pwd: str = ''
+    ) -> bool:
         """
         Check if study root is valid.
 
@@ -235,23 +239,51 @@ class PrecisionStudy(EPStudy):
             root_dir : string (optional)
                 path to check. If not specified, the current study root
                 is checked.
+            pwd : str
+                password used for protected archives
 
         Returns:
             bool : valid or not
         """
 
+        log.info('checking if study root{}is valid'
+                 .format(' ' + root_dir + ' ' if root_dir else ' '))
+
         if not root_dir:
-            folder_list = self._get_immediate_subdir(self.studyRoot)
-        else:
-            folder_list = self._get_immediate_subdir(root_dir)
+            for folder in self.mapLocations:
+                path = self.repository.join(folder)
+                if not self.repository.is_folder(path):
+                    log.warning('cannot find {} in repository!'.format(folder))
+                    # map location does not exist
+                    return False
+                # all map folders found, valid
+                return True
+        elif root_dir:
+            try:
+                tmp_root = Repository(root_dir, pwd=pwd)
+            except FileNotFoundError:
+                # repository can not be found, so it's invalid
+                return False
 
-        # check if study root contains folders with same name as maps
-        if not all(n in folder_list for n in self.mapNames):
-            # root saved in study is invalid
-            return False
+            if not tmp_root.root:
+                # dummy repo was not initialized properly, so root is invalid
+                return False
 
-        # specified root directory is valid
-        return True
+            study_info = self.get_study_info()
+            if study_info is None:
+                log.warning('no data found in {}'.format(root_dir))
+                return False
+
+            # if study name is correct, assume valid repository
+            if study_info['name'] == self.name:
+                return True
+
+            log.warning('study name in repository ({}) does not match!'
+                        .format(study_info['name'])
+                        )
+
+        # at this point root is definitely invalid
+        return False
 
     def set_repository(self, root_dir):
         """
