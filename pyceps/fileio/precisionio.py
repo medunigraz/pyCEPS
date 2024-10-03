@@ -227,12 +227,18 @@ def read_landmark_geo(
                    )
 
 
-def load_dxl_data(filename):
+def load_dxl_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
     """
     Read Precision DxL data file containing point information.
 
     Parameters:
-        filename : str
+        fid : file like
+            file handle to DxL file
+        encoding : str
+            file encoding used to read file
 
     Raises:
         IOError : If file not found
@@ -249,12 +255,10 @@ def load_dxl_data(filename):
     # create child logger
     log = logging.getLogger('{}.load_dxl_data'.format(__name__))
 
-    if not os.path.isfile(filename):
-        raise IOError('DxL data file {} not found!'.format(filename))
+    log.debug('reading file {}'.format(fid.name))
 
     # read data at once, files are only ~19MB
-    with open(filename, mode='r') as fid:
-        data = fid.read()
+    data = fid.read().decode(encoding=encoding)
 
     # extract header
     start_pos = 0
@@ -304,7 +308,9 @@ def load_dxl_data(filename):
     return header, point_data, ecg_data, cfe_data
 
 
-def parse_dxl_header(header_str):
+def parse_dxl_header(
+        header_str: str
+) -> dxlDataHeader:
     """
     Parse header information of DxL data file
 
@@ -385,7 +391,9 @@ def parse_dxl_header(header_str):
                          )
 
 
-def parse_dxl_egm_data(data_str):
+def parse_dxl_egm_data(
+        data_str: str
+) -> dict:
     """
     Parse ECG data section in DxL data file.
 
@@ -447,7 +455,9 @@ def parse_dxl_egm_data(data_str):
             }
 
 
-def parse_dxl_cfe_data(cfe_str):
+def parse_dxl_cfe_data(
+        cfe_str: str
+) -> List[CFEDetection]:
     """
     Parse CFE detection data in DxL data file.
 
@@ -455,7 +465,7 @@ def parse_dxl_cfe_data(cfe_str):
         cfe_str : string
 
     Returns:
-        CFEDetection object
+        list of CFEDetection object
     """
     # trace for detection
     start_pos = cfe_str.find('CFE detection rov trace:')
@@ -483,7 +493,7 @@ def parse_dxl_cfe_data(cfe_str):
     # sanity check
     if len(trace) != count.shape[0] and len(trace) != sample_idx.shape[1]:
         print('CFE data is inconsistent, cannot build data!')
-        return {}
+        return []
 
     # build CFE data
     cfe_str = []
