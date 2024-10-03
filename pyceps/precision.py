@@ -208,10 +208,15 @@ class PrecisionStudy(EPStudy):
         map_names = super().import_maps()
 
         # now import maps
-        for map_name in map_names:
+        for i, map_name in enumerate(map_names):
             try:
-                new_map = PrecisionMap(map_name, parent=self)
+                map_location = self.mapLocations[i]
+                log.info('importing map {} from {}:'
+                         .format(map_name, map_location))
+                new_map = PrecisionMap(map_name, map_location, parent=self)
+                new_map.import_map()
                 self.maps[map_name] = new_map
+                self.mapPoints[i] = len(new_map.points)
             except Exception as err:
                 log.warning('failed to import map {}: {}'
                             .format(map_name, err))
