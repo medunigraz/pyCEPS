@@ -889,6 +889,43 @@ class PrecisionMap(EPMap):
                 ]
 
     def ablation_sites_to_lesion(self):
+    def export_point_info(
+            self,
+            output_folder: str = '',
+            points: Optional[List[EPPoint]] = None
+    ) -> None:
+
+        log.info('exporting additional EGM point data')
+        log.info('Not implemented yet, skipping')
+
+    def export_point_ecg(
+            self,
+            output_folder: str = '',
+            which: Optional[Union[str, List[str]]] = None,
+            points: Optional[List[EPPoint]] = None,
+            reload_data: bool = False
+    ) -> None:
+        """
+        Export surface ECG traces in IGB format.
+
+        Not implemented yet!
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+            which : string or list of strings
+                ECG name(s) to include in IGB file.
+            points : list of CartoPoints (optional)
+                EGM points to export
+            reload_data : bool
+                reload ECG data if already loaded
+
+        Returns:
+            None
+        """
+
+        log.info('cannot export point ECG data for Precision studies!')
+        return
         """Convert ablation sites data to base class lesions."""
 
         lesions = []
