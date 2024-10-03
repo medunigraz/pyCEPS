@@ -18,20 +18,40 @@
 
 import os
 import logging
-import pickle
-import gzip
+import copy
+from typing import Optional, Union, List, TypeVar
+import zipfile
+import py7zr
+from xml.etree import ElementTree as ET
+from xml.dom import minidom
+
 import numpy as np
 import re
+from packaging.version import Version
 
+from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
+from pyceps.datatypes import Surface, Mesh
+
+from pyceps.fileio.xmlio import (
+    xml_add_binary_numpy,
+    xml_load_binary_data,
+    xml_load_binary_trace,
+    xml_load_binary_bsecg,
+)
 from pyceps.datatypes.precision.precisiontypes import DetectionAlgorithm
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
-from pyceps.datatypes.lesions import RFIndex
-from pyceps.fileio.precisionio import (read_landmark_geo, load_dxl_data,
-                                       load_ecg_data, load_lesion_data
-                                       )
+from pyceps.datatypes.lesions import Lesions, RFIndex, AblationSite
+from pyceps.fileio.precisionio import (
+    read_landmark_geo, load_dxl_data,
+    load_ecg_data, load_lesion_data
+)
 from pyceps.datatypes.exceptions import MeshFileNotFoundError
 from pyceps.utils import console_progressbar
+
+
+# workaround to type hint self
+TPrecisionStudy = TypeVar('TPrecisionStudy', bound='PrecisionStudy')
 
 
 log = logging.getLogger(__name__)
