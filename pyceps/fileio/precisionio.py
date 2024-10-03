@@ -506,15 +506,18 @@ def parse_dxl_cfe_data(
     return cfe_str
 
 
-def load_ecg_data(filename):
+def load_ecg_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
     """
     Load  Precision ECG data.
 
     Parameters:
-        filename : string
-
-    Raises:
-        IOError : If file not found
+        fid : file-like
+            file handle to ECG CSV
+        encoding : str
+            file encoding used to read file
 
     Returns:
         list of Trace objects
@@ -523,13 +526,8 @@ def load_ecg_data(filename):
     # create child logger
     log = logging.getLogger('{}.load_ecg_data'.format(__name__))
 
-    if not os.path.isfile(filename):
-        raise IOError('ECG data file {} not found!'.format(filename))
-
     # read data at once, files are only ~kB
-    fid = open(filename, mode='r')
-    data = fid.read()
-    fid.close()
+    data = fid.read().decode(encoding=encoding)
 
     start_idx = data.find('Number of waves (columns):', 0)
     end_idx = data.find('\n', start_idx)
