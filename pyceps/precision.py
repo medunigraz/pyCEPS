@@ -609,19 +609,21 @@ class PrecisionMap(EPMap):
     Class representing Precision map.
     """
 
-    def __init__(self, name, parent=None):
+    def __init__(
+            self,
+            name: str,
+            location: str = '',
+            parent: Optional['PrecisionStudy'] = None
+    ) -> None:
         """Constructor."""
 
         # Note: map name is folder name for now, needs to be extracted from
         # DxL data files and set later (load_points())!
         super().__init__(name, parent=parent)
 
-        self.surfaceFile = 'DxLandmarkGeo.xml'
-
         # add Precision specific attributes
-        self.rootDir = os.path.join(self.parent.studyRoot, name)
-        self.files = [x for x in os.listdir(self.rootDir)
-                      if os.path.isfile(os.path.join(self.rootDir, x))]
+        self.surfaceFile = 'DxLandmarkGeo.xml'
+        self.location = location
         self.ablationSites = []
 
         # load data
