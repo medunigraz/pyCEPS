@@ -17,23 +17,24 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
+from typing import IO, List
 import numpy as np
-import xml.etree.ElementTree as xml
+import xml.etree.ElementTree as ET
 import re
 
 from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
-from pyceps.datatypes.precision.precisiontypes import (PrecisionSurfaceLabel,
-                                                       dxlDataHeader, CFEDetection,
-                                                       PrecisionLesion
-                                                       )
+from pyceps.datatypes.precision.precisiontypes import (
+    PrecisionSurfaceLabel,
+    dxlDataHeader, CFEDetection,
+    PrecisionLesion
+)
 from pyceps.datatypes.signals import Trace
 
 
 logger = logging.getLogger(__name__)
 
 
-class _CommentedTreeBuilder(xml.TreeBuilder):
+class _CommentedTreeBuilder(ET.TreeBuilder):
     """
     XML TreeBuilder that preserves comments.
 
