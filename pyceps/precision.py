@@ -651,7 +651,9 @@ class PrecisionMap(EPMap):
         # build map BSECGs
         self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
 
-    def import_mesh(self, *args, **kwargs):
+    def load_mesh(
+            self
+    ) -> Surface:
         """
         Load a Precision mesh from file.
 
@@ -659,16 +661,17 @@ class PrecisionMap(EPMap):
             MeshFileNotFoundError
 
         Returns:
-            Surface object
+            Surface
         """
 
-        mesh_file = os.path.join(self.rootDir, self.surfaceFile)
-        log.info('reading Precision mesh {}'.format(mesh_file))
+        log.info('reading Precision mesh {}'.format(self.surfaceFile))
 
-        if not os.path.isfile(mesh_file):
-            raise MeshFileNotFoundError(filename=mesh_file)
+        mesh_file = self.parent.repository.join(self.location + '/' + self.surfaceFile)
+        if not self.parent.repository.is_file(mesh_file):
+            raise MeshFileNotFoundError(filename=self.surfaceFile)
 
-        return read_landmark_geo(mesh_file)
+        with self.parent.repository.open(mesh_file, mode='rb') as fid:
+            return read_landmark_geo(fid, encoding=self.parent.encoding)
 
     def load_points(self, *args, **kwargs):
         """
