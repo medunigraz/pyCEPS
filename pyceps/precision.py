@@ -888,7 +888,6 @@ class PrecisionMap(EPMap):
                                )
                 ]
 
-    def ablation_sites_to_lesion(self):
     def export_point_info(
             self,
             output_folder: str = '',
@@ -926,10 +925,13 @@ class PrecisionMap(EPMap):
 
         log.info('cannot export point ECG data for Precision studies!')
         return
+
+    @staticmethod
+    def ablation_sites_to_lesion(sites):
         """Convert ablation sites data to base class lesions."""
 
         lesions = []
-        for site in self.ablationSites:
+        for site in sites:
             # Precision lesions only have color information, convert to
             # numeric value as RFI
             rfi_value = (site.color[0]
@@ -937,10 +939,10 @@ class PrecisionMap(EPMap):
                          + site.color[2] * 256**2
                          )
             rfi = RFIndex(name='precision', value=rfi_value)
-            lesions.append(Lesion(X=site.X,
-                                  diameter=site.diameter,
-                                  RFIndex=[rfi]
-                                  )
+            lesions.append(AblationSite(X=site.X,
+                                        diameter=site.diameter,
+                                        RFIndex=[rfi]
+                                        )
                            )
 
         return lesions
