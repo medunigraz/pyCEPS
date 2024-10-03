@@ -673,9 +673,11 @@ class PrecisionMap(EPMap):
         with self.parent.repository.open(mesh_file, mode='rb') as fid:
             return read_landmark_geo(fid, encoding=self.parent.encoding)
 
-    def load_points(self, *args, **kwargs):
+    def load_points(
+            self
+    ):
         """
-        Load points for Carto3 map.
+        Load points for Precision map.
 
         Point information is found in "DxL_#.csv" files.
 
@@ -690,21 +692,26 @@ class PrecisionMap(EPMap):
 
         # get all DxL files in root folder
         dxl_regex = re.compile('DxL.*csv')
-        dxl_files = [os.path.join(self.rootDir, f)
-                     for f in self.files if re.match(dxl_regex, f)]
+        dxl_files = self.parent.repository.list_dir(
+            self.parent.repository.join(self.location),
+            regex=dxl_regex
+        )
         dxl_files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
         # work through files and get data
         point_id = 1
-        for n, file in enumerate(dxl_files):
+        for n, filename in enumerate(dxl_files):
             # update progress bar
             console_progressbar(
                 n + 1, len(dxl_files),
-                suffix='Loading point data from file {}'.format(file)
+                suffix='Loading point data from file {}'.format(filename)
             )
 
             # load file data
-            header, point_data, ecg_data, cfe_data = load_dxl_data(file)
+            file = self.parent.repository.join(self.location + '/' + filename)
+            with self.parent.repository.open(file) as fid:
+                header, point_data, ecg_data, cfe_data = load_dxl_data(fid,
+                                                                       encoding=self.parent.encoding)
 
             # check if files are in correct order
             if not n == header.fileNumber[0] - 1:
@@ -758,6 +765,16 @@ class PrecisionMap(EPMap):
                                      data=ecg_data['rov']['values'][:, i],
                                      fs=header.sampleRate
                                      )
+                # TODO: get unipolar recordings for Precision
+                uni_names = ecg_data['rov']['names'][i].split(' ')[-1].split('-')
+                point.egmUni = [
+                    Trace(name=uni_names[0],
+                          data=np.full(point.egmBip.data.shape, np.nan),
+                          fs=header.sampleRate),
+                    Trace(name=uni_names[1],
+                          data=np.full(point.egmBip.data.shape, np.nan),
+                          fs=header.sampleRate)
+                ]
                 point.egmRef = Trace(name=ecg_data['ref']['names'][i],
                                      data=ecg_data['ref']['values'][:, i],
                                      fs=header.sampleRate
