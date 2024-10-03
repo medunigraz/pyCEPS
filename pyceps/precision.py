@@ -42,31 +42,159 @@ class PrecisionStudy(EPStudy):
     Class representing a Precision study.
     """
 
-    def __init__(self, study_repo, pwd='', encoding='cp1252'):
-        """Constructor."""
+    def __init__(
+            self,
+            study_repo: str,
+            pwd: str = '',
+            encoding: str = 'cp1252'
+    ) -> None:
+        """
+        Constructor.
+
+        Parameters:
+            study_repo : str
+                location of the study data, can be folder or ZIP archive
+            pwd : str (optional)
+                password for protected ZIP archives
+            encoding : str (optional)
+                file encoding used (all files are in binary mode).
+                Default: cp1252
+
+        Returns:
+            None
+        """
 
         super().__init__(system='precision',
                          study_repo=study_repo,
                          pwd=pwd,
                          encoding=encoding)
 
-        if not os.path.isdir(study_repo):
-            log.warning('Study folder not found!')
-            raise FileNotFoundError
-
-        # Precision study name is the name of export folder
-        self.name = os.path.basename(study_repo)
-        self.studyRoot = study_repo
+        self.version = Version('0.0')  # system version creating the data
+        self.mapLocations = []  # location of map data within repository
 
         self.import_study()
 
     def import_study(self):
         """Load study details and basic information."""
 
-        # get map names, i.e. sub-folder names of study root
-        self.mapNames = self._get_immediate_subdir(self.studyRoot)
+        # evaluate study name
+        study_info = self.get_study_info()
+
+        self.name = study_info['name']
+        self.version = study_info['version']
+        self.mapNames = [m[0] for m in study_info['maps']]
+        self.mapLocations = [m[1] for m in study_info['maps']]
         # number of points is undetermined for now...
         self.mapPoints = [np.nan] * len(self.mapNames)
+
+    def get_study_info(
+            self
+    ) -> Optional[dict]:
+        """
+        Load basic info about study from repository.
+
+        Returns:
+            dict
+                'name' : study name
+                'version' : version with which this was created
+                'maps' : list of tuple with names and path of mapping
+                    procedures
+        """
+
+        log.debug('searching for data in {}'.format(self.repository))
+
+        def check_folder(
+                path: Repository,
+                structure: List[tuple[str, str, Version, str]]
+        ) -> Optional[List[tuple[str, str, Version, str]]]:
+            """
+            Search this folder tree for EnSite data.
+
+            Returns:
+                List of tuple or empty list
+                    name : str
+                    map_name : str
+                    version : Version
+                    loc : str (data path relative to repository root)
+            """
+            file_matches = path.list_dir(path.join(''),
+                                         regex=r'Model(.*)Groups.xml'
+                                         )
+            if file_matches:
+                map_name = os.path.basename(path.get_root_string())
+                map_loc = ''
+                version = Version('0.0')
+                study_name = ''
+
+                # get version info from timeline .csv
+                csv_file = path.list_dir(path.join(''),
+                                         regex=r'NotebookByTime.csv'
+                                         )
+                if not csv_file:
+                    log.warning('unable to find NotebookByTime.csv, cannot '
+                                'retrieve study info!')
+                else:
+                    with path.open(path.join(csv_file[0])) as fid:
+                        # read first 10 lines, should contain all info needed
+                        header = [next(fid).decode(encoding=self.encoding).rstrip()
+                                  for _ in range(10)]
+                        for line in header:
+                            if 'File Revision' in line:
+                                version = Version(line.split(':')[1])
+                            if 'Export from Study' in line:
+                                study_name = line.split(':')[1].strip()
+                    map_loc = os.path.relpath(path.get_root_string(),
+                                              path.get_base_string()
+                                              )
+
+                return [
+                    (study_name, map_name, version, map_loc)
+                ]
+
+            # no matches found, continue search
+            folders = [f for f in path.list_dir(path.join(''))
+                       if path.is_folder(path.join(f))
+                       or path.is_archive(path.join(f))
+                       ]
+            log.debug('found subdirectories: {}'.format(folders))
+
+            for folder in folders:
+                # update root location and start new search there
+                temp_repo = copy.copy(path)
+                temp_repo.update_root(path.join(folder))
+                structure += check_folder(temp_repo, structure)
+
+            # no data found
+            return []
+
+        # search directory tree
+        study_structure = []
+        study_structure += check_folder(self.repository, study_structure)
+
+        if not study_structure:
+            return None
+
+        # build study info from tree structure
+        # check if all maps are from same study
+        if not all([x[0] == study_structure[0][0] for x in study_structure]):
+            raise TypeError('data comes from different studies!')
+        # check if file version is same for all maps
+        if not all([x[2] == study_structure[0][2] for x in study_structure]):
+            raise TypeError('data contains different file formats!')
+        # build map names and location
+        map_info = []
+        for pmap in study_structure:
+            name = pmap[1]
+            loc = pmap[3]
+            map_info.append((name, loc))
+
+        study_info = dict()
+        study_info['name'] = study_structure[0][0]
+        study_info['version'] = study_structure[0][2]
+        study_info['maps'] = map_info
+
+        # no data was found
+        return study_info
 
     def import_maps(self, map_names=None, *args, **kwargs):
         """
