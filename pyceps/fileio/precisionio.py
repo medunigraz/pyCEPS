@@ -45,7 +45,10 @@ class _CommentedTreeBuilder(xml.TreeBuilder):
         self.end('!comment')
 
 
-def read_landmark_geo(filename):
+def read_landmark_geo(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> Surface:
     """
     Load Precision Volume.
 
@@ -57,8 +60,10 @@ def read_landmark_geo(filename):
         surface of origin (volume ID from ModelGroups.xml)
 
     Parameters:
-        filename : string
-            path to DxLandmarkGeo.xml
+        fid : file-like
+            file handle to DxLandmarkGeo.xml
+        encoding : str
+            file encoding used to read file
     Raises:
         AttributeError : If file version is not supported
         AttributeError : If more than 1 volumes in file
@@ -69,15 +74,7 @@ def read_landmark_geo(filename):
     # create child logger
     log = logging.getLogger('{}.read_landmark_geo'.format(__name__))
 
-    if not filename.endswith('.xml'):
-        log.warning('XML file expected')
-        return Surface([], [])
-
-    if not os.path.exists(filename):
-        log.warning('Model Group file {} not found'.format(filename))
-        return Surface([], [])
-
-    log.debug('reading Precision Models from {}'.format(filename))
+    log.debug('reading Precision Models from {}'.format(fid.name))
 
     # create placeholders for surface map data
     verts = np.empty((0, 3), dtype=np.single)
@@ -88,8 +85,8 @@ def read_landmark_geo(filename):
     labels = []
 
     # build XML tree and get root element
-    tree = xml.parse(filename,
-                     parser=xml.XMLParser(target=_CommentedTreeBuilder()))
+    tree = ET.parse(fid,
+                    parser=ET.XMLParser(target=_CommentedTreeBuilder()))
     root = tree.getroot()
 
     # check version
@@ -166,9 +163,9 @@ def read_landmark_geo(filename):
                 log.warning('unable to fetch map status description!')
             comment = comment.split('Map_status for each vertex:')[1]
             # work out the value description
-            status_desc = [{'value': int(s.split('=')[0].strip()),
-                            'description': s.split('=')[1].strip()
-                            }
+            status_desc = ['value {}: {}'
+                           .format(int(s.split('=')[0].strip()),
+                                   s.split('=')[1].strip())
                            for s in comment.split(',')
                            ]
             n_status = int(elem.get('number'))
@@ -182,7 +179,7 @@ def read_landmark_geo(filename):
             labels.append(SurfaceLabel('status',
                                        np.expand_dims(status, axis=1),
                                        'pointData',
-                                       description=status_desc
+                                       description='; '.join(status_desc)
                                        )
                             )
 
