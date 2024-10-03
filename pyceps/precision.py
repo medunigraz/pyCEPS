@@ -314,65 +314,227 @@ class PrecisionStudy(EPStudy):
         return True
 
     @classmethod
-    def load(cls, file: str, repository_path: str = '', password: str = ''):
+    def load(
+            cls,
+            file: str,
+            repository_path: str = '',
+            password: str = ''
+    ) -> TPrecisionStudy:
         """
-        Load pickled version of a study.
+        Load study from file. Overrides BaseClass method.
 
-        A previously saved pickled version of a CartoStudy object can be
+        A previously saved version of a PrecisionStudy object can be
         loaded. The objects <study_root> is set to the one stored in the
-        PKL file if valid. If not, the folder of the PKL is set as root
+        file if valid. If not, the folder of the file is set as root
         directory.
-        The path to the Carto files can also be specified explicitly.
-
-        Note that loading to a string with pickle.loads is about 10% faster
-        but probably consumes a lot more memory so we'll skip that for now.
+        The path to the Precision files can also be specified explicitly.
 
         Parameters:
-            filename : string
-                path to the .PKL or .GZ study file
-            root : string (optional)
-                path to the root directory
+            file : str
+                location of .pyceps file
+            repository_path : str
+                set repository root to this location
+            password : str
 
         Raises:
-            FileNotFoundError : if pickled file cannot be found
+            TypeError : If file is not Carto3
 
         Returns:
-            CartoStudy object
+            CartoStudy
         """
 
-        if filename.endswith('.gz'):
-            f = gzip.open(filename, 'rb')
-        else:
-            f = open(filename, 'rb')
-        obj = pickle.load(f)
-        f.close()
+        log.debug('loading study')
 
-        # try to set root if explicitly given
-        if root:
-            if obj.set_repository(os.path.abspath(root)):
-                log.info('setting study root to {}'.format(root))
-                return obj
+        with open(file) as fid:
+            root = ET.parse(fid).getroot()
+
+        # check if file was generated from Carto3 data
+        system = root.get('system')
+        if not system.lower() == "precision":
+            raise TypeError('expected Precision system file, found {}'
+                            .format(system))
+
+        # create empty class instance
+        repo = root.find('Repository')
+        base_path = repo.get('base')
+        if not os.path.exists(base_path) and not os.path.isfile(base_path):
+            log.warning('repository path save in pyCEPS file can not be '
+                        'reached!\n'
+                        'Trying to initialize with file location...')
+            base_path = file
+
+        study = cls(base_path,
+                    pwd=password,
+                    encoding=repo.get('encoding'))
+
+        # load basic info
+        study.name = root.get('name')
+        study.version = Version(root.get('file_version'))
+
+        # try to set study root
+        VALID_ROOT = False
+        if repository_path:
+            # try to set root if explicitly given
+            log.info('trying to set study root to {}'.format(repository_path))
+
+            if study.set_repository(os.path.abspath(repository_path)):
+                log.info('setting study root to {}'.format(repository_path))
+                VALID_ROOT = True
             else:
                 log.info('cannot set study root to {}\n'
-                         'Trying to use root information from PKL'
-                         .format(root))
+                         'Trying to use root information from file'
+                         .format(repository_path)
+                         )
 
-        # check if repository is valid and accessible
-        if obj.is_root_valid():
-            log.info('previous study root is still valid ({})'
-                     .format(obj.studyRoot))
-            obj.set_repository(os.path.abspath(obj.studyRoot))
-            return obj
+        if not VALID_ROOT:
+            # try to re-set previous study root
+            base_path = root.find('Repository').get('root')
+            log.info('trying to set study root to root from file: {}'
+                     .format(base_path)
+                     )
 
-        # no valid root found so far, set to pkl directory
-        log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.studyRoot = os.path.abspath(filename)
+            if study.set_repository(base_path):
+                log.info('previous study root is still valid ({})'
+                         .format(study.repository.root)
+                         )
+                VALID_ROOT = True
 
-        return obj
+        if not VALID_ROOT:
+            # try to search for studyXML in current location or at folder above
+            cur_dir = os.path.dirname(file)
+            log.info('no valid study root found so far, trying to search for '
+                     'repository at file location {}'
+                     .format(cur_dir))
 
-    @staticmethod
-    def _get_immediate_subdir(parent_dir):
-        """Get all directory names in parent folder."""
+            # search in current pyCEPS file folder
+            filenames = [f for f in os.listdir(cur_dir)
+                         if (os.path.isfile(os.path.join(cur_dir, f))
+                             and (zipfile.is_zipfile(os.path.join(cur_dir, f))
+                                  or py7zr.is_7zfile(os.path.join(cur_dir, f))
+                                  )
+                             )
+                         or os.path.isdir(os.path.join(cur_dir, f))
+                         ]
+            for file in filenames:
+                try:
+                    if study.set_repository(os.path.join(cur_dir, file)):
+                        VALID_ROOT = True
+                        break
+                except:
+                    # some error occurred, don't care what exactly,
+                    # just continue
+                    continue
+
+            if not VALID_ROOT:
+                # search in folder above
+                log.info('searching in folder above file location...')
+                cur_dir = os.path.abspath(os.path.join(cur_dir, '..'))
+                filenames = [f for f in os.listdir(cur_dir)
+                             if (os.path.isfile(os.path.join(cur_dir, f))
+                                 and (zipfile.is_zipfile(os.path.join(cur_dir, f))
+                                      or py7zr.is_7zfile(
+                                        os.path.join(cur_dir, f))
+                                      )
+                                 )
+                             or os.path.isdir(os.path.join(cur_dir, f))
+                             ]
+                for file in filenames:
+                    try:
+                        if study.set_repository(os.path.join(cur_dir, file)):
+                            VALID_ROOT = True
+                            break
+                    except:
+                        # some error occurred, don't care what exactly,
+                        # just continue
+                        continue
+
+        if not VALID_ROOT:
+            # no valid root found so far, set to pkl directory
+            log.warning(
+                'no valid study root found. Using file location!'.upper()
+            )
+            study.repository.base = os.path.abspath(file)
+            study.repository.root = os.path.dirname(os.path.abspath(file))
+
+        # load mapping procedures
+        proc_item = root.find('Procedures')
+        sep = chr(int(proc_item.get('sep')))
+        study.mapNames = proc_item.get('names').split(sep)
+        study.mapPoints = [int(x) if x != 'nan' else np.iinfo(int).min
+                           for x in proc_item.get('points').split(sep)
+                           ]
+
+        for proc in proc_item.iter('Procedure'):
+            name = proc.get('name')
+            location = proc.get('location')
+            # add location to study
+            study.mapLocations.append(location)
+
+            new_map = PrecisionMap(name, location, parent=study)
+
+            # load mesh
+            mesh_item = proc.find('Mesh')
+            if mesh_item:
+                new_map.surface = Surface.load_from_xml(mesh_item)
+            else:
+                log.warning('no surface data found in XML!')
+
+            # load BSECGs
+            new_map.bsecg = xml_load_binary_bsecg(proc.find('BSECGS'))
+
+            # load lesions
+            lesions_item = proc.find('Lesions')
+            if lesions_item:
+                new_map.lesions = Lesions.load_from_xml(lesions_item)
+            else:
+                log.info('no lesion data found in XML')
+
+            # load EGM points
+            p_data = {}
+            points_item = proc.find('Points')
+            num_points = int(points_item.get('count'))
+
+            if num_points > 0:
+                for arr in points_item.findall('DataArray'):
+                    d_name, data = xml_load_binary_data(arr)
+                    p_data[d_name] = data
+                for arr in points_item.findall('Traces'):
+                    d_name, data = xml_load_binary_trace(arr)
+                    p_data[d_name] = data
+
+                points = []
+                for i in range(num_points):
+                    new_point = PrecisionPoint('dummy', parent=new_map)
+                    for key, value in p_data.items():
+                        if hasattr(new_point, key):
+                            setattr(new_point, key, value[i])
+                        else:
+                            log.warning('cannot set attribute "{}" '
+                                        'for CartoPoint'
+                                        .format(key)
+                                        )
+                    points.append(new_point)
+                new_map.points = points
+
+            # now we can add the procedure to the study
+            study.maps[name] = new_map
+
+        # load additional meshes
+        mesh_item = root.find('AdditionalMeshes')
+        if mesh_item:
+            _, reg_matrix = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'registrationMatrix'][0]
+            )
+            _, file_names = xml_load_binary_data(
+                [x for x in mesh_item.findall('DataArray')
+                 if x.get('name') == 'fileNames'][0]
+            )
+            study.meshes = Mesh(registrationMatrix=reg_matrix,
+                                fileNames=file_names
+                                )
+
+        return study
 
         return [name for name in os.listdir(parent_dir)
                 if os.path.isdir(os.path.join(parent_dir, name))
