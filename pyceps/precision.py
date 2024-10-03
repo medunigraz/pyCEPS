@@ -820,17 +820,18 @@ class PrecisionMap(EPMap):
 
         log.info('loading lesion data for map {}'.format(self.name))
 
-        lesion_file = 'Lesions.csv'
-        if lesion_file not in self.files:
+        lesion_file = self.parent.repository.join(
+            self.location + '/' + 'Lesions.csv'
+        )
+        if self.parent.repository.is_file(lesion_file):
             log.warning('no lesion data found ({})'.format(lesion_file))
             return
 
-        self.ablationSites = load_lesion_data(os.path.join(self.rootDir,
-                                                           lesion_file)
-                                              )
+        with self.parent.repository.open(lesion_file) as fid:
+            lesions = load_lesion_data(fid, encoding=self.parent.encoding)
 
         # convert ablation sites data to base class lesions
-        self.lesions = self.ablation_sites_to_lesion()
+        self.lesions = self.ablation_sites_to_lesion(lesions)
 
     def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
         """Get a mean surface ECG trace.
