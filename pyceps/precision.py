@@ -833,7 +833,12 @@ class PrecisionMap(EPMap):
         # convert ablation sites data to base class lesions
         self.lesions = self.ablation_sites_to_lesion(lesions)
 
-    def build_map_ecg(self, ecg_names=None, method=None, *args, **kwargs):
+    def build_map_ecg(
+            self,
+            ecg_names: Optional[Union[str, List[str]]] = None,
+            method: Optional[Union[str, List[str]]] = None,
+            *args, **kwargs
+    ) -> List[BodySurfaceECG]:
         """Get a mean surface ECG trace.
 
         NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
@@ -849,8 +854,9 @@ class PrecisionMap(EPMap):
 
         log.info('loading ECGs for map {}'.format(self.name))
 
-        ecg_file = 'ECG_RAW.csv'
-        if ecg_file not in self.files:
+        ecg_file = self.parent.repository.join(
+            self.location + '/' + 'ECG_RAW.csv')
+        if not self.parent.repository.is_file(ecg_file):
             log.warning('no ECG data found ({})'.format(ecg_file))
             return []
 
@@ -862,7 +868,8 @@ class PrecisionMap(EPMap):
         elif isinstance(ecg_names, str):
             ecg_names = [ecg_names]
 
-        traces = load_ecg_data(os.path.join(self.rootDir, ecg_file))
+        with self.parent.repository.open(ecg_file, mode='rb') as fid:
+            traces = load_ecg_data(fid, encoding=self.parent.encoding)
 
         # check if requested ECG signals were loaded
         trace_names = [t.name for t in traces]
