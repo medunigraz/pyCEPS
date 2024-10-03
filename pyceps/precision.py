@@ -626,14 +626,30 @@ class PrecisionMap(EPMap):
         self.location = location
         self.ablationSites = []
 
-        # load data
-        self.surface = self.import_mesh()
+    def import_map(
+            self,
+            location: str = ''
+    ) -> None:
+        """
+
+        Parameters:
+            location : str
+
+        Returns:
+            None
+        """
+
+        self.surface = self.load_mesh()
         self.points = self.load_points()
         # build surface maps
-        self.interpolate_data('act')
+        self.interpolate_data('lat')
         self.interpolate_data('bip')
-        # self.interpolate_data('uni')
-        self.ecg = self.build_map_ecg()
+        self.interpolate_data('uni')
+        self.interpolate_data('imp')
+        self.interpolate_data('frc')
+
+        # build map BSECGs
+        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
 
     def import_mesh(self, *args, **kwargs):
         """
