@@ -580,19 +580,24 @@ def load_ecg_data(
     return traces
 
 
-def load_lesion_data(filename):
+def load_lesion_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> List[PrecisionLesion]:
     """
     Load Precision lesion data.
 
     Parameters:
-        filename : string
+        fid : file-like
+            file handle to lesion CSV
+        encoding : str
+            file encoding used to read file
 
     Raises:
         IOError : If file not found
 
     Returns:
-        list of Lesion objects
-
+        list of PrecisionLesion objects
     """
 
     # create child logger
@@ -600,13 +605,8 @@ def load_lesion_data(filename):
 
     lesions = []
 
-    if not os.path.isfile(filename):
-        raise IOError('lesion data file {} not found!'.format(filename))
-
     # read data at once, files are only ~kB
-    fid = open(filename, mode='r')
-    data = fid.read()
-    fid.close()
+    data = fid.read().decode(encoding=encoding)
 
     start_idx = data.find('Number of waves (columns):', 0)
     end_idx = data.find('\n', start_idx)
