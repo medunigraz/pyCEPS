@@ -285,7 +285,10 @@ class PrecisionStudy(EPStudy):
         # at this point root is definitely invalid
         return False
 
-    def set_repository(self, root_dir):
+    def set_repository(
+            self,
+            root_dir: str
+    ) -> bool:
         """
         Change path to root directory.
 
@@ -299,13 +302,15 @@ class PrecisionStudy(EPStudy):
             bool : successful or not
         """
 
+        log.info('setting study root to new directory {}'.format(root_dir))
+
         study_root = os.path.abspath(root_dir)
         if not self.is_root_valid(study_root):
             log.warning('root directory is invalid: {}'.format(study_root))
             return False
 
-        # set proper study root, i.e string or zipfile.Path
-        self.studyRoot = root_dir
+        # set repository root to new location
+        self.repository.update_root(root_dir)
         return True
 
     @classmethod
