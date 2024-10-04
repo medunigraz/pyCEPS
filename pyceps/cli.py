@@ -346,6 +346,7 @@ def load_study(args):
             study = PrecisionStudy(args.study_repository,
                                    pwd=args.password,
                                    encoding=args.encoding)
+            study.import_study()
         else:
             raise KeyError('unknown EAM system specified!')
 

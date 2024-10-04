@@ -92,7 +92,6 @@ class PrecisionStudy(EPStudy):
         self.version = Version('0.0')  # system version creating the data
         self.mapLocations = []  # location of map data within repository
 
-        self.import_study()
 
     def import_study(self):
         """Load study details and basic information."""
