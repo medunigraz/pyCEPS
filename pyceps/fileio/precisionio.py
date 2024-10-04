@@ -17,23 +17,24 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
+from typing import IO, List
 import numpy as np
-import xml.etree.ElementTree as xml
+import xml.etree.ElementTree as ET
 import re
 
 from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
-from pyceps.datatypes.precision.precisiontypes import (PrecisionSurfaceLabel,
-                                                       dxlDataHeader, CFEDetection,
-                                                       PrecisionLesion
-                                                       )
+from pyceps.datatypes.precision.precisiontypes import (
+    PrecisionSurfaceLabel,
+    dxlDataHeader, CFEDetection,
+    PrecisionLesion
+)
 from pyceps.datatypes.signals import Trace
 
 
 logger = logging.getLogger(__name__)
 
 
-class _CommentedTreeBuilder(xml.TreeBuilder):
+class _CommentedTreeBuilder(ET.TreeBuilder):
     """
     XML TreeBuilder that preserves comments.
 
@@ -45,7 +46,10 @@ class _CommentedTreeBuilder(xml.TreeBuilder):
         self.end('!comment')
 
 
-def read_landmark_geo(filename):
+def read_landmark_geo(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> Surface:
     """
     Load Precision Volume.
 
@@ -57,8 +61,10 @@ def read_landmark_geo(filename):
         surface of origin (volume ID from ModelGroups.xml)
 
     Parameters:
-        filename : string
-            path to DxLandmarkGeo.xml
+        fid : file-like
+            file handle to DxLandmarkGeo.xml
+        encoding : str
+            file encoding used to read file
     Raises:
         AttributeError : If file version is not supported
         AttributeError : If more than 1 volumes in file
@@ -69,15 +75,7 @@ def read_landmark_geo(filename):
     # create child logger
     log = logging.getLogger('{}.read_landmark_geo'.format(__name__))
 
-    if not filename.endswith('.xml'):
-        log.warning('XML file expected')
-        return Surface([], [])
-
-    if not os.path.exists(filename):
-        log.warning('Model Group file {} not found'.format(filename))
-        return Surface([], [])
-
-    log.debug('reading Precision Models from {}'.format(filename))
+    log.debug('reading Precision Models from {}'.format(fid.name))
 
     # create placeholders for surface map data
     verts = np.empty((0, 3), dtype=np.single)
@@ -88,8 +86,8 @@ def read_landmark_geo(filename):
     labels = []
 
     # build XML tree and get root element
-    tree = xml.parse(filename,
-                     parser=xml.XMLParser(target=_CommentedTreeBuilder()))
+    tree = ET.parse(fid,
+                    parser=ET.XMLParser(target=_CommentedTreeBuilder()))
     root = tree.getroot()
 
     # check version
@@ -166,9 +164,9 @@ def read_landmark_geo(filename):
                 log.warning('unable to fetch map status description!')
             comment = comment.split('Map_status for each vertex:')[1]
             # work out the value description
-            status_desc = [{'value': int(s.split('=')[0].strip()),
-                            'description': s.split('=')[1].strip()
-                            }
+            status_desc = ['value {}: {}'
+                           .format(int(s.split('=')[0].strip()),
+                                   s.split('=')[1].strip())
                            for s in comment.split(',')
                            ]
             n_status = int(elem.get('number'))
@@ -182,7 +180,7 @@ def read_landmark_geo(filename):
             labels.append(SurfaceLabel('status',
                                        np.expand_dims(status, axis=1),
                                        'pointData',
-                                       description=status_desc
+                                       description='; '.join(status_desc)
                                        )
                             )
 
@@ -230,12 +228,18 @@ def read_landmark_geo(filename):
                    )
 
 
-def load_dxl_data(filename):
+def load_dxl_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
     """
     Read Precision DxL data file containing point information.
 
     Parameters:
-        filename : str
+        fid : file like
+            file handle to DxL file
+        encoding : str
+            file encoding used to read file
 
     Raises:
         IOError : If file not found
@@ -252,12 +256,10 @@ def load_dxl_data(filename):
     # create child logger
     log = logging.getLogger('{}.load_dxl_data'.format(__name__))
 
-    if not os.path.isfile(filename):
-        raise IOError('DxL data file {} not found!'.format(filename))
+    log.debug('reading file {}'.format(fid.name))
 
     # read data at once, files are only ~19MB
-    with open(filename, mode='r') as fid:
-        data = fid.read()
+    data = fid.read().decode(encoding=encoding)
 
     # extract header
     start_pos = 0
@@ -307,7 +309,9 @@ def load_dxl_data(filename):
     return header, point_data, ecg_data, cfe_data
 
 
-def parse_dxl_header(header_str):
+def parse_dxl_header(
+        header_str: str
+) -> dxlDataHeader:
     """
     Parse header information of DxL data file
 
@@ -388,7 +392,9 @@ def parse_dxl_header(header_str):
                          )
 
 
-def parse_dxl_egm_data(data_str):
+def parse_dxl_egm_data(
+        data_str: str
+) -> dict:
     """
     Parse ECG data section in DxL data file.
 
@@ -450,7 +456,9 @@ def parse_dxl_egm_data(data_str):
             }
 
 
-def parse_dxl_cfe_data(cfe_str):
+def parse_dxl_cfe_data(
+        cfe_str: str
+) -> List[CFEDetection]:
     """
     Parse CFE detection data in DxL data file.
 
@@ -458,7 +466,7 @@ def parse_dxl_cfe_data(cfe_str):
         cfe_str : string
 
     Returns:
-        CFEDetection object
+        list of CFEDetection object
     """
     # trace for detection
     start_pos = cfe_str.find('CFE detection rov trace:')
@@ -486,7 +494,7 @@ def parse_dxl_cfe_data(cfe_str):
     # sanity check
     if len(trace) != count.shape[0] and len(trace) != sample_idx.shape[1]:
         print('CFE data is inconsistent, cannot build data!')
-        return {}
+        return []
 
     # build CFE data
     cfe_str = []
@@ -499,15 +507,18 @@ def parse_dxl_cfe_data(cfe_str):
     return cfe_str
 
 
-def load_ecg_data(filename):
+def load_ecg_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
     """
     Load  Precision ECG data.
 
     Parameters:
-        filename : string
-
-    Raises:
-        IOError : If file not found
+        fid : file-like
+            file handle to ECG CSV
+        encoding : str
+            file encoding used to read file
 
     Returns:
         list of Trace objects
@@ -516,13 +527,8 @@ def load_ecg_data(filename):
     # create child logger
     log = logging.getLogger('{}.load_ecg_data'.format(__name__))
 
-    if not os.path.isfile(filename):
-        raise IOError('ECG data file {} not found!'.format(filename))
-
     # read data at once, files are only ~kB
-    fid = open(filename, mode='r')
-    data = fid.read()
-    fid.close()
+    data = fid.read().decode(encoding=encoding)
 
     start_idx = data.find('Number of waves (columns):', 0)
     end_idx = data.find('\n', start_idx)
@@ -575,19 +581,24 @@ def load_ecg_data(filename):
     return traces
 
 
-def load_lesion_data(filename):
+def load_lesion_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> List[PrecisionLesion]:
     """
     Load Precision lesion data.
 
     Parameters:
-        filename : string
+        fid : file-like
+            file handle to lesion CSV
+        encoding : str
+            file encoding used to read file
 
     Raises:
         IOError : If file not found
 
     Returns:
-        list of Lesion objects
-
+        list of PrecisionLesion objects
     """
 
     # create child logger
@@ -595,13 +606,8 @@ def load_lesion_data(filename):
 
     lesions = []
 
-    if not os.path.isfile(filename):
-        raise IOError('lesion data file {} not found!'.format(filename))
-
     # read data at once, files are only ~kB
-    fid = open(filename, mode='r')
-    data = fid.read()
-    fid.close()
+    data = fid.read().decode(encoding=encoding)
 
     start_idx = data.find('Number of waves (columns):', 0)
     end_idx = data.find('\n', start_idx)
