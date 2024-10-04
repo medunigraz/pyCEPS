@@ -24,10 +24,8 @@ import zipfile
 import py7zr
 from xml.etree import ElementTree as ET
 from xml.dom import minidom
-
 import numpy as np
 import re
-from packaging.version import Version
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
@@ -662,7 +660,7 @@ class PrecisionStudy(EPStudy):
         maps : dict
             mapping procedures performed during study. Dictionary keys are
             the mapping procedure names (subset of mapNames attribute)
-        version : Version
+        version : str
             file version used in repository
         mapLocations : list of str
             path(s) to map data within the repository
@@ -702,7 +700,7 @@ class PrecisionStudy(EPStudy):
                          pwd=pwd,
                          encoding=encoding)
 
-        self.version = Version('0.0')  # system version creating the data
+        self.version = '0.0'  # system version creating the data
         self.mapLocations = []  # location of map data within repository
 
     def import_study(
@@ -743,8 +741,8 @@ class PrecisionStudy(EPStudy):
 
         def check_folder(
                 path: Repository,
-                structure: List[tuple[str, str, Version, str]]
-        ) -> Optional[List[tuple[str, str, Version, str]]]:
+                structure: List[tuple[str, str, str, str]]
+        ) -> Optional[List[tuple[str, str, str, str]]]:
             """
             Search this folder tree for Precision data.
 
@@ -752,7 +750,7 @@ class PrecisionStudy(EPStudy):
                 List of tuple or empty list
                     name : str
                     map_name : str
-                    version : Version
+                    version : str
                     loc : str (data path relative to repository root)
             """
 
@@ -762,7 +760,7 @@ class PrecisionStudy(EPStudy):
             if file_matches:
                 map_name = os.path.basename(path.get_root_string())
                 map_loc = ''
-                version = Version('0.0')
+                version = '0.0'
                 study_name = ''
 
                 # get version info from timeline .csv
@@ -779,7 +777,7 @@ class PrecisionStudy(EPStudy):
                                   for _ in range(10)]
                         for line in header:
                             if 'File Revision' in line:
-                                version = Version(line.split(':')[1])
+                                version = line.split(':')[1].strip()
                             if 'Export from Study' in line:
                                 study_name = line.split(':')[1].strip()
                     map_loc = os.path.relpath(path.get_root_string(),
@@ -1031,7 +1029,7 @@ class PrecisionStudy(EPStudy):
 
         # load basic info
         study.name = root.get('name')
-        study.version = Version(root.get('file_version'))
+        study.version = root.get('file_version')
 
         # try to set study root
         VALID_ROOT = False
@@ -1236,7 +1234,7 @@ class PrecisionStudy(EPStudy):
             return filepath
 
         # add Precision specific data
-        root.set('file_version', str(self.version))
+        root.set('file_version', self.version)
 
         for key, cmap in self.maps.items():
             map_item = [p for p in root.iter('Procedure')
