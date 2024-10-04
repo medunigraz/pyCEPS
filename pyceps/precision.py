@@ -33,6 +33,7 @@ from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
 from pyceps.datatypes import Surface, Mesh
 
+from pyceps.fileio import FileWriter
 from pyceps.fileio.xmlio import (
     xml_add_binary_numpy,
     xml_load_binary_data,
@@ -57,9 +58,616 @@ TPrecisionStudy = TypeVar('TPrecisionStudy', bound='PrecisionStudy')
 log = logging.getLogger(__name__)
 
 
+class PrecisionPoint(EPPoint):
+    """
+    Class representing a Precision mapping point.
+
+    Attributes:
+        name : str
+            identifier for this recording point
+        parent : PrecisionMap
+            parent mapping procedure this point belongs to
+        recX : ndarray (3, )
+            coordinates at which this point was recorded
+        prjX : ndarray (3, )
+            coordinates of the closest anatomical shell vertex
+        prjDistance : float
+            distance between recording location and closest shell vertex
+        refAnnotation : int
+            annotation for reference detection in samples
+        latAnnotation : int
+            annotation for local activation time in samples
+        woi : ndarray (2, 1)
+            start and end timestamps of the WOI in samples
+        uniVoltage : float
+            peak-to-peak voltage in unipolar EGM
+        bipVoltage : float
+            peak-to-peak voltage in bipolar EGM
+        egmBip : Trace
+            bipolar EGM trace
+        egmUni : Trace
+            unipolar EGm trace(s). If supported by the mapping system,
+            two unipolar traces are stored
+        uniX : ndarray (3, )
+            cartesian coordinates of the second unipolar recording electrode
+            NOTE: coordinates of second unipolar electrode are same as recX if
+            position cannot be determined
+        egmRef : Trace
+            reference trace
+        ecg : list of Trace
+            ecg traces for this point
+        impedance : float
+        force : float
+        catheterName : str
+            name of the catheter used to record this point
+        electrodeName :
+            name of the recording electrode
+        displayed : bool
+            flag if point was displayed in Precision
+        utilized : bool
+            flag if point was used to create map
+        exportedSeconds : float
+            exported data length in (msec)
+        endTime : float
+        pNegativeVoltage : float
+            peak negative voltage in (mV)
+        CFEMean : float
+            CFE mean measures in (msec)
+        CFEstd : float
+            CFE standard deviation measures in (msec)
+        CFEDetection : CFEDetection
+            information about CFE detection
+        algorithm : dict
+            'rov' : DetectionAlgorithm for the roving trace
+            'ref' : DetectionAlgorithm for the reference trace
+    """
+
+    def __init__(
+            self,
+            name: str,
+            coordinates: np.ndarray = np.full((3, 1), np.nan, dtype=float),
+            parent: Optional['PrecisionMap'] = None
+    ) -> None:
+        """
+        Constructor.
+
+        Parameters:
+             name : str
+                name / identifier for this point
+            coordinates : ndarray(3, )
+                cartesian coordinates of recording position
+            parent : PrecisionMap (optional)
+                the map this point belongs to
+
+        Raises:
+            TypeError : if parent is not of type PrecisionMap
+
+        Returns:
+            None
+        """
+
+        super().__init__(name, coordinates=coordinates, parent=parent)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, PrecisionMap):
+            raise TypeError('Cannot set parent for PrecisionPoint of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
+
+        # add Precision specific attributes
+        self.catheterName = ''
+        self.electrodeName = ''
+
+        self.displayed = False
+        self.utilized = False
+        self.exportedSeconds = np.nan
+        self.endTime = np.nan
+        self.pNegativeVoltage = np.nan
+        self.CFEMean = np.nan
+        self.CFEstd = np.nan
+        self.CFEDetection = None
+        self.algorithm = {}
+
+    def is_valid(
+            self
+    ) -> bool:
+        """Check if point was used for map generation."""
+
+        return self.utilized
+
+
+class PrecisionMap(EPMap):
+    """
+    Class representing Precision map.
+
+    Attributes:
+            name : str
+                name of the mapping procedure
+            parent : subclass of EPStudy
+                the parent study for this map
+            surfaceFile : str
+                filename of file containing the anatomical shell data
+            location : str
+                path to map data within repository
+            surface : Surface
+                triangulated anatomical shell
+            points : list of subclass EPPoints
+                the mapping points recorded during mapping procedure
+            bsecg : list of BodySurfaceECG
+                body surface ECG data for the mapping procedure
+            lesions : Lesions
+                ablation data for this mapping procedure
+            ablationSites = list of PrecisionLesion
+                ablation data imported from study
+    """
+
+    def __init__(
+            self,
+            name: str,
+            location: str = '',
+            parent: Optional['PrecisionStudy'] = None
+    ) -> None:
+        """
+        Constructor.
+
+        Parameters:
+            name : str
+                name of the mapping procedure
+            location : str
+                path to map data within repository
+            parent : PrecisionStudy (optional)
+                study this map belongs to
+
+        Raises:
+            TypeError : if parent is not of type CartoStudy
+
+        Returns:
+            None
+        """
+
+        super().__init__(name, parent=None)
+        # explicitly set parent for correct type hinting
+        if parent is not None and not isinstance(parent, PrecisionStudy):
+            raise TypeError('Cannot set parent for PrecisionMap of type {}'
+                            .format(type(parent))
+                            )
+        self.parent = parent
+
+        # add Precision specific attributes
+        self.surfaceFile = 'DxLandmarkGeo.xml'
+        self.location = location
+        self.ablationSites = []
+
+    def import_map(
+            self,
+    ) -> None:
+        """
+        Load all relevant information for this mapping procedure, import EGM
+        recording points, interpolate standard surface parameter maps from
+        point data (bip voltage, uni voltage, LAT), and build representative
+        body surface ECGs.
+
+        Raises:
+            MeshFileNotFoundError: If mesh file is not found in repository
+
+        Returns:
+            None
+        """
+
+        self.surface = self.load_mesh()
+        self.points = self.load_points()
+        # build surface maps
+        self.interpolate_data('lat')
+        self.interpolate_data('bip')
+        self.interpolate_data('uni')
+        self.interpolate_data('imp')
+        self.interpolate_data('frc')
+
+        # build map BSECGs
+        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
+
+    def load_mesh(
+            self
+    ) -> Surface:
+        """
+        Load a Precision mesh from file.
+
+        Raises:
+            MeshFileNotFoundError : if mesh file is not found
+
+        Returns:
+            Surface
+        """
+
+        log.info('reading Precision mesh {}'.format(self.surfaceFile))
+
+        mesh_file = self.parent.repository.join(
+            self.location + '/' + self.surfaceFile
+        )
+        if not self.parent.repository.is_file(mesh_file):
+            raise MeshFileNotFoundError(filename=self.surfaceFile)
+
+        with self.parent.repository.open(mesh_file, mode='rb') as fid:
+            return read_landmark_geo(fid, encoding=self.parent.encoding)
+
+    def load_points(
+            self
+    ) -> List[PrecisionPoint]:
+        """
+        Load points for Precision map.
+
+        Point information is found in "DxL_#.csv" files.
+
+        Returns:
+            list of PrecisionPoint
+        """
+
+        log.info('import EGM points')
+
+        points = []
+
+        # get all DxL files in root folder
+        dxl_regex = re.compile('DxL.*csv')
+        dxl_files = self.parent.repository.list_dir(
+            self.parent.repository.join(self.location),
+            regex=dxl_regex
+        )
+        dxl_files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
+
+        # work through files and get data
+        point_id = 1
+        for n, filename in enumerate(dxl_files):
+            # update progress bar
+            console_progressbar(
+                n + 1, len(dxl_files),
+                suffix='Loading point data from file {}'.format(filename)
+            )
+
+            # load file data
+            file = self.parent.repository.join(self.location + '/' + filename)
+            with self.parent.repository.open(file) as fid:
+                header, point_data, ecg_data, cfe_data = load_dxl_data(
+                    fid,
+                    encoding=self.parent.encoding
+                )
+
+            # check if files are in correct order
+            if not n == header.fileNumber[0] - 1:
+                log.warning('files are not read in consecutive order! '
+                            'Reading file {}, expected file {}!'
+                            .format(header.fileNumber[0], n)
+                            )
+            # check if all files are listed
+            if not header.fileNumber[1] == len(dxl_files):
+                log.warning('not all data files are listed! Expected {} '
+                            'files, but only {} are listed'
+                            .format(header.fileNumber[1], len(dxl_files))
+                            )
+
+            # build PrecisionPoints
+            for i in range(header.nPoints):
+                # get coordinates first
+                coordinates = np.array([float(point_data['roving x'][i]),
+                                        float(point_data['roving y'][i]),
+                                        float(point_data['roving z'][i])
+                                        ]
+                                       )
+                surf_coordinates = np.array([float(point_data['surfPt x'][i]),
+                                             float(point_data['surfPt y'][i]),
+                                             float(point_data['surfPt z'][i])
+                                             ]
+                                            )
+
+                # initialize point
+                point = PrecisionPoint(
+                    'P{}'.format(point_id),
+                    coordinates=coordinates,
+                    parent=self
+                )
+
+                # calculate annotation time in (samples) relative to trace
+                # window
+                exported_secs = header.exportedSeconds
+                end_time = float(point_data['end time'][i])
+                ref_lat = float(point_data['ref LAT'][i])
+                egm_lat = float(point_data['rov LAT'][i])
+                ref_annotation = exported_secs - (end_time - ref_lat)
+                lat_annotation = exported_secs - (end_time - egm_lat)
+
+                # add base attributes
+                point.prjX = surf_coordinates
+                point.refAnnotation = ref_annotation * header.sampleRate
+                point.latAnnotation = lat_annotation * header.sampleRate
+                point.bipVoltage = float(point_data['peak2peak'][i])
+                point.egmBip = Trace(name=ecg_data['rov']['names'][i],
+                                     data=ecg_data['rov']['values'][:, i],
+                                     fs=header.sampleRate
+                                     )
+                # TODO: get unipolar recordings for Precision
+                uni_names = ecg_data['rov']['names'][i].split()[-1].split('-')
+                point.egmUni = [
+                    Trace(name=uni_names[0],
+                          data=np.full(point.egmBip.data.shape, np.nan),
+                          fs=header.sampleRate),
+                    Trace(name=uni_names[1],
+                          data=np.full(point.egmBip.data.shape, np.nan),
+                          fs=header.sampleRate)
+                ]
+                point.egmRef = Trace(name=ecg_data['ref']['names'][i],
+                                     data=ecg_data['ref']['values'][:, i],
+                                     fs=header.sampleRate
+                                     )
+
+                # add Precision-specific attributes
+                point.utilized = bool(int(point_data['utilized'][i]))
+                point.displayed = bool(int(point_data['displayed'][i]))
+                point.exportedSeconds = exported_secs
+                point.endTime = end_time
+                point.pNegativeVoltage = float(point_data['peak neg'][i])
+                point.CFEMean = float(point_data['CFE mean'][i])
+                point.CFEstd = float(point_data['CFE stddev'][i])
+                point.CFEDetection = cfe_data[i]
+                point.algorithm = {
+                    'rov': DetectionAlgorithm(
+                        code=point_data['rov detect'][i],
+                        parameter=float(point_data['rov param'][i])),
+                    'ref': DetectionAlgorithm(
+                        code=point_data['ref detect'][i],
+                        parameter=float(point_data['ref param'][i])),
+                }
+
+                # add point to map
+                points.append(point)
+                point_id += 1
+
+        log.info('loaded {} points to map {}'
+                 .format(len(points), self.name)
+                 )
+
+        return points
+
+    def import_lesions(
+            self,
+            *args, **kwargs
+    ) -> None:
+        """
+        Import Precision lesion data.
+
+        Note: More than one RF index can be stored per ablation site.
+
+        Returns:
+            None
+        """
+
+        log.info('loading lesion data for map {}'.format(self.name))
+
+        lesion_file = self.parent.repository.join(
+            self.location + '/' + 'Lesions.csv'
+        )
+        if self.parent.repository.is_file(lesion_file):
+            log.warning('no lesion data found ({})'.format(lesion_file))
+            return
+
+        with self.parent.repository.open(lesion_file) as fid:
+            self.ablationSites = load_lesion_data(fid,
+                                                  encoding=self.parent.encoding
+                                                  )
+
+        # convert ablation sites data to base class lesions
+        self.lesions = self.ablation_sites_to_lesion(self.ablationSites)
+
+    def build_map_ecg(
+            self,
+            ecg_names: Optional[Union[str, List[str]]] = None,
+            method: Optional[Union[str, List[str]]] = None,
+            *args, **kwargs
+    ) -> List[BodySurfaceECG]:
+        """
+        Get a mean surface ECG trace.
+
+        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
+
+        Parameters:
+            method : str, list of str (optional)
+                not used here, just for compatibility. Precision ECGs are
+                saved per map anyway.
+            ecg_names : list of str
+                ECG names to build. If note specified, 12-lead ECG is used
+
+        Returns
+            list of BodySurfaceECG : representative ECG traces
+        """
+
+        log.info('loading ECGs for map {}'.format(self.name))
+
+        ecg_file = self.parent.repository.join(
+            self.location + '/' + 'ECG_RAW.csv')
+        if not self.parent.repository.is_file(ecg_file):
+            log.warning('no ECG data found ({})'.format(ecg_file))
+            return []
+
+        if not ecg_names:
+            ecg_names = ['I', 'II', 'III',
+                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
+                         'aVL', 'aVR', 'aVF'
+                         ]
+        elif isinstance(ecg_names, str):
+            ecg_names = [ecg_names]
+
+        with self.parent.repository.open(ecg_file, mode='rb') as fid:
+            traces = load_ecg_data(fid, encoding=self.parent.encoding)
+
+        # check if requested ECG signals were loaded
+        trace_names = [t.name for t in traces]
+        load_names = []
+        for name in ecg_names:
+            if name not in trace_names:
+                log.warning('ECG {} not found in data!'.format(name))
+            else:
+                load_names.append(name)
+
+        return [BodySurfaceECG(method='recording',
+                               refAnnotation=np.nan,
+                               traces=[t for t in traces
+                                       if t.name in load_names
+                                       ]
+                               )
+                ]
+
+    def export_point_info(
+            self,
+            output_folder: str = '',
+            points: Optional[List[EPPoint]] = None
+    ) -> None:
+        """
+        Export additional recording point info in DAT format.
+
+        Files created are labeled ".pc." and can be associated with
+        recording location point cloud ".pc.pts" or with locations projected
+        onto the high-resolution mesh".ppc.pts".
+
+        Following data can is exported:
+            NAME : point identifier
+            REF : reference annotation
+
+        By default, data from all valid points is exported, but also a
+        list of EPPoints to use can be given.
+
+        If no basename is explicitly specified, the map's name is used and
+        files are saved to the directory above the study root.
+        Naming convention:
+            <basename>.ptdata.<parameter>.pc.dat
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+           points : list of PrecisionPoints (optional)
+                EGM points to export
+
+        Returns:
+            None
+        """
+
+        log.info('exporting additional EGM point data')
+
+        if not points:
+            points = self.get_valid_points()
+        if not len(points) > 0:
+            log.warning('no points found in map {}. Nothing to export...'
+                        .format(self.name))
+            return
+
+        # export point cloud first
+        self.export_point_cloud(points=points, output_folder=output_folder)
+
+        output_folder = self.resolve_export_folder(output_folder)
+        basename = os.path.join(output_folder, self.name)
+
+        # export data
+        writer = FileWriter()
+
+        data = np.array([point.name for point in points])
+        dat_file = '{}.ptdata.NAME.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point names to {}'.format(f))
+
+        data = np.array([point.refAnnotation for point in points])
+        dat_file = '{}.ptdata.REF.pc.dat'.format(basename)
+        f = writer.dump(dat_file, data)
+        log.info('exported point reference annotation to {}'.format(f))
+
+        return
+
+    def export_point_ecg(
+            self,
+            output_folder: str = '',
+            which: Optional[Union[str, List[str]]] = None,
+            points: Optional[List[EPPoint]] = None,
+            reload_data: bool = False
+    ) -> None:
+        """
+        Export surface ECG traces in IGB format.
+
+        Not implemented yet!
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+            which : string or list of strings
+                ECG name(s) to include in IGB file.
+            points : list of PrecisionPoints (optional)
+                EGM points to export
+            reload_data : bool
+                reload ECG data if already loaded
+
+        Returns:
+            None
+        """
+
+        log.info('cannot export point ECG data for Precision studies!')
+        return
+
+    @staticmethod
+    def ablation_sites_to_lesion(
+            sites
+    ) -> List[AblationSite]:
+        """
+        Convert ablation sites data to base class lesions.
+
+        Parameters:
+            sites : list of PrecisionLesion
+
+        Returns:
+            list of AblationSites
+        """
+
+        lesions = []
+        for site in sites:
+            # Precision lesions only have color information, convert to
+            # numeric value as RFI
+            rfi_value = (site.color[0]
+                         + site.color[1] * 256
+                         + site.color[2] * 256**2
+                         )
+            rfi = RFIndex(name='precision', value=rfi_value)
+            lesions.append(AblationSite(X=site.X,
+                                        diameter=site.diameter,
+                                        RFIndex=[rfi]
+                                        )
+                           )
+
+        return lesions
+
+
 class PrecisionStudy(EPStudy):
     """
     Class representing a Precision study.
+
+    Attributes:
+        system : str
+            name of the EAM system used
+        repository : Repository
+            path object pointing to study data repository. Can be a folder or
+            a ZIP archive
+        pwd : bytes
+            password to access encrypted ZIP archives
+        encoding : str
+            file encoding used to read files. (default: cp1252)
+        name : str
+            name of the study
+        mapNames : list of str
+            names of the mapping procedures contained in data set
+        mapPoints : list of int
+            number of points recorded during mapping procedure
+        maps : dict
+            mapping procedures performed during study. Dictionary keys are
+            the mapping procedure names (subset of mapNames attribute)
+        version : Version
+            file version used in repository
+        mapLocations : list of str
+            path(s) to map data within the repository
+        meshes : list of Surface objects (optional)
+            additional meshes from e.g. CT data
     """
 
     def __init__(
@@ -80,6 +688,11 @@ class PrecisionStudy(EPStudy):
                 file encoding used (all files are in binary mode).
                 Default: cp1252
 
+        Raises:
+            TypeError : if system name is unknown (or not yet implemented)
+            TypeError : if study_repo is not of type string
+            FileExistsError : if study file or folder does not exist
+
         Returns:
             None
         """
@@ -92,9 +705,15 @@ class PrecisionStudy(EPStudy):
         self.version = Version('0.0')  # system version creating the data
         self.mapLocations = []  # location of map data within repository
 
+    def import_study(
+            self
+    ) -> None:
+        """
+        Load study details and basic information.
 
-    def import_study(self):
-        """Load study details and basic information."""
+        Returns:
+            None
+        """
 
         # evaluate study name
         study_info = self.get_study_info()
@@ -116,8 +735,8 @@ class PrecisionStudy(EPStudy):
             dict
                 'name' : study name
                 'version' : version with which this was created
-                'maps' : list of tuple with names and path of mapping
-                    procedures
+                'maps' : list of tuple
+                    names and path of mapping procedures
         """
 
         log.debug('searching for data in {}'.format(self.repository))
@@ -127,7 +746,7 @@ class PrecisionStudy(EPStudy):
                 structure: List[tuple[str, str, Version, str]]
         ) -> Optional[List[tuple[str, str, Version, str]]]:
             """
-            Search this folder tree for EnSite data.
+            Search this folder tree for Precision data.
 
             Returns:
                 List of tuple or empty list
@@ -136,6 +755,7 @@ class PrecisionStudy(EPStudy):
                     version : Version
                     loc : str (data path relative to repository root)
             """
+
             file_matches = path.list_dir(path.join(''),
                                          regex=r'Model(.*)Groups.xml'
                                          )
@@ -215,9 +835,24 @@ class PrecisionStudy(EPStudy):
         # no data was found
         return study_info
 
-    def import_maps(self, map_names=None, *args, **kwargs):
+    def import_maps(
+            self,
+            map_names: Optional[Union[str, List[str]]] = None,
+            *args, **kwargs
+    ) -> None:
         """
-        Load a Precision map
+        Import Precision maps.
+
+        If a map was already imported before and is part of the study,
+        user interaction to reload is required.
+
+        Parameters:
+            map_names : list of str (optional)
+                name or list of map names to import. If no name is
+                specified, all maps are loaded (default).
+
+        Raises:
+            ValueError : If user entered character other than Y/N/y/n
 
         Returns:
             None
@@ -243,8 +878,16 @@ class PrecisionStudy(EPStudy):
 
         return
 
-    def export_additional_meshes(self, *args, **kwargs):
-        raise NotImplementedError
+    def export_additional_meshes(
+            self,
+            output_folder: str = '',
+            *args, **kwargs
+    ) -> None:
+        """Export any additional meshes."""
+
+        log.warning('export of additional meshes is not yet supported for '
+                    'Precision!')
+        return
 
     def is_root_valid(
             self,
@@ -356,10 +999,10 @@ class PrecisionStudy(EPStudy):
             password : str
 
         Raises:
-            TypeError : If file is not Carto3
+            TypeError : If file is not Precision
 
         Returns:
-            CartoStudy
+            PrecisionStudy
         """
 
         log.debug('loading study')
@@ -621,377 +1264,3 @@ class PrecisionStudy(EPStudy):
 
         log.info('saved study to {}'.format(filepath))
         return filepath
-
-
-class PrecisionMap(EPMap):
-    """
-    Class representing Precision map.
-    """
-
-    def __init__(
-            self,
-            name: str,
-            location: str = '',
-            parent: Optional['PrecisionStudy'] = None
-    ) -> None:
-        """Constructor."""
-
-        # Note: map name is folder name for now, needs to be extracted from
-        # DxL data files and set later (load_points())!
-        super().__init__(name, parent=parent)
-
-        # add Precision specific attributes
-        self.surfaceFile = 'DxLandmarkGeo.xml'
-        self.location = location
-        self.ablationSites = []
-
-    def import_map(
-            self,
-            location: str = ''
-    ) -> None:
-        """
-
-        Parameters:
-            location : str
-
-        Returns:
-            None
-        """
-
-        self.surface = self.load_mesh()
-        self.points = self.load_points()
-        # build surface maps
-        self.interpolate_data('lat')
-        self.interpolate_data('bip')
-        self.interpolate_data('uni')
-        self.interpolate_data('imp')
-        self.interpolate_data('frc')
-
-        # build map BSECGs
-        self.bsecg = self.build_map_ecg(method=['median', 'mse', 'ccf'])
-
-    def load_mesh(
-            self
-    ) -> Surface:
-        """
-        Load a Precision mesh from file.
-
-        Raises:
-            MeshFileNotFoundError
-
-        Returns:
-            Surface
-        """
-
-        log.info('reading Precision mesh {}'.format(self.surfaceFile))
-
-        mesh_file = self.parent.repository.join(self.location + '/' + self.surfaceFile)
-        if not self.parent.repository.is_file(mesh_file):
-            raise MeshFileNotFoundError(filename=self.surfaceFile)
-
-        with self.parent.repository.open(mesh_file, mode='rb') as fid:
-            return read_landmark_geo(fid, encoding=self.parent.encoding)
-
-    def load_points(
-            self
-    ):
-        """
-        Load points for Precision map.
-
-        Point information is found in "DxL_#.csv" files.
-
-        Returns:
-            points : list of PrecisionPoint objects
-
-        """
-
-        log.info('import EGM points')
-
-        points = []
-
-        # get all DxL files in root folder
-        dxl_regex = re.compile('DxL.*csv')
-        dxl_files = self.parent.repository.list_dir(
-            self.parent.repository.join(self.location),
-            regex=dxl_regex
-        )
-        dxl_files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
-
-        # work through files and get data
-        point_id = 1
-        for n, filename in enumerate(dxl_files):
-            # update progress bar
-            console_progressbar(
-                n + 1, len(dxl_files),
-                suffix='Loading point data from file {}'.format(filename)
-            )
-
-            # load file data
-            file = self.parent.repository.join(self.location + '/' + filename)
-            with self.parent.repository.open(file) as fid:
-                header, point_data, ecg_data, cfe_data = load_dxl_data(fid,
-                                                                       encoding=self.parent.encoding)
-
-            # check if files are in correct order
-            if not n == header.fileNumber[0] - 1:
-                log.warning('files are not read in consecutive order! '
-                            'Reading file {}, expected file {}!'
-                            .format(header.fileNumber[0], n)
-                            )
-            # check if all files are listed
-            if not header.fileNumber[1] == len(dxl_files):
-                log.warning('not all data files are listed! Expected {} '
-                            'files, but only {} are listed'
-                            .format(header.fileNumber[1], len(dxl_files))
-                            )
-
-            # build PrecisionPoints
-            for i in range(header.nPoints):
-                # get coordinates first
-                coordinates = np.array([float(point_data['roving x'][i]),
-                                        float(point_data['roving y'][i]),
-                                        float(point_data['roving z'][i])
-                                        ]
-                                       )
-                surf_coordinates = np.array([float(point_data['surfPt x'][i]),
-                                             float(point_data['surfPt y'][i]),
-                                             float(point_data['surfPt z'][i])
-                                             ]
-                                            )
-
-                # initialize point
-                point = PrecisionPoint(
-                    'P{}'.format(point_id),
-                    coordinates=coordinates,
-                    parent=self
-                )
-
-                # calculate annotation time in (samples) relative to trace
-                # window
-                exported_secs = header.exportedSeconds
-                end_time = float(point_data['end time'][i])
-                ref_lat = float(point_data['ref LAT'][i])
-                egm_lat = float(point_data['rov LAT'][i])
-                ref_annotation = exported_secs - (end_time - ref_lat)
-                lat_annotation = exported_secs - (end_time - egm_lat)
-
-                # add base attributes
-                point.prjX = surf_coordinates
-                point.refAnnotation = ref_annotation * header.sampleRate
-                point.latAnnotation = lat_annotation * header.sampleRate
-                point.bipVoltage = float(point_data['peak2peak'][i])
-                point.egmBip = Trace(name=ecg_data['rov']['names'][i],
-                                     data=ecg_data['rov']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
-                # TODO: get unipolar recordings for Precision
-                uni_names = ecg_data['rov']['names'][i].split(' ')[-1].split('-')
-                point.egmUni = [
-                    Trace(name=uni_names[0],
-                          data=np.full(point.egmBip.data.shape, np.nan),
-                          fs=header.sampleRate),
-                    Trace(name=uni_names[1],
-                          data=np.full(point.egmBip.data.shape, np.nan),
-                          fs=header.sampleRate)
-                ]
-                point.egmRef = Trace(name=ecg_data['ref']['names'][i],
-                                     data=ecg_data['ref']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
-
-                # add Precision-specific attributes
-                point.utilized = bool(int(point_data['utilized'][i]))
-                point.displayed = bool(int(point_data['displayed'][i]))
-                point.exportedSeconds = exported_secs
-                point.endTime = end_time
-                point.pNegativeVoltage = float(point_data['peak neg'][i])
-                point.CFEMean = float(point_data['CFE mean'][i])
-                point.CFEstd = float(point_data['CFE stddev'][i])
-                point.CFEDetection = cfe_data[i]
-                point.algorithm = {
-                    'rov': DetectionAlgorithm(
-                        code=point_data['rov detect'][i],
-                        parameter=float(point_data['rov param'][i])),
-                    'ref': DetectionAlgorithm(
-                        code=point_data['ref detect'][i],
-                        parameter=float(point_data['ref param'][i])),
-                }
-
-                # add point to map
-                points.append(point)
-                point_id += 1
-
-        log.info('loaded {} points to map {}'
-                 .format(len(points), self.name)
-                 )
-
-        return points
-
-    def import_lesions(self, *args, **kwargs):
-        """
-        Import Precision lesion data.
-
-        Note: More than one RF index can be stored per ablation site.
-
-        Returns:
-            None
-        """
-
-        log.info('loading lesion data for map {}'.format(self.name))
-
-        lesion_file = self.parent.repository.join(
-            self.location + '/' + 'Lesions.csv'
-        )
-        if self.parent.repository.is_file(lesion_file):
-            log.warning('no lesion data found ({})'.format(lesion_file))
-            return
-
-        with self.parent.repository.open(lesion_file) as fid:
-            lesions = load_lesion_data(fid, encoding=self.parent.encoding)
-
-        # convert ablation sites data to base class lesions
-        self.lesions = self.ablation_sites_to_lesion(lesions)
-
-    def build_map_ecg(
-            self,
-            ecg_names: Optional[Union[str, List[str]]] = None,
-            method: Optional[Union[str, List[str]]] = None,
-            *args, **kwargs
-    ) -> List[BodySurfaceECG]:
-        """Get a mean surface ECG trace.
-
-        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
-
-        Parameters:
-            method:
-            ecg_names : list of str
-                ECG names to build. If note specified, 12-lead ECG is used
-
-        Returns
-            list of BodySurfaceECG : representative ECG traces
-        """
-
-        log.info('loading ECGs for map {}'.format(self.name))
-
-        ecg_file = self.parent.repository.join(
-            self.location + '/' + 'ECG_RAW.csv')
-        if not self.parent.repository.is_file(ecg_file):
-            log.warning('no ECG data found ({})'.format(ecg_file))
-            return []
-
-        if not ecg_names:
-            ecg_names = ['I', 'II', 'III',
-                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
-                         'aVL', 'aVR', 'aVF'
-                         ]
-        elif isinstance(ecg_names, str):
-            ecg_names = [ecg_names]
-
-        with self.parent.repository.open(ecg_file, mode='rb') as fid:
-            traces = load_ecg_data(fid, encoding=self.parent.encoding)
-
-        # check if requested ECG signals were loaded
-        trace_names = [t.name for t in traces]
-        load_names = []
-        for name in ecg_names:
-            if name not in trace_names:
-                log.warning('ECG {} not found in data!'.format(name))
-            else:
-                load_names.append(name)
-
-        return [BodySurfaceECG(method='recording',
-                               refAnnotation=np.nan,
-                               traces=[t for t in traces
-                                       if t.name in load_names
-                                       ]
-                               )
-                ]
-
-    def export_point_info(
-            self,
-            output_folder: str = '',
-            points: Optional[List[EPPoint]] = None
-    ) -> None:
-
-        log.info('exporting additional EGM point data')
-        log.info('Not implemented yet, skipping')
-
-    def export_point_ecg(
-            self,
-            output_folder: str = '',
-            which: Optional[Union[str, List[str]]] = None,
-            points: Optional[List[EPPoint]] = None,
-            reload_data: bool = False
-    ) -> None:
-        """
-        Export surface ECG traces in IGB format.
-
-        Not implemented yet!
-
-        Parameters:
-            output_folder : str (optional)
-                path of the exported files
-            which : string or list of strings
-                ECG name(s) to include in IGB file.
-            points : list of CartoPoints (optional)
-                EGM points to export
-            reload_data : bool
-                reload ECG data if already loaded
-
-        Returns:
-            None
-        """
-
-        log.info('cannot export point ECG data for Precision studies!')
-        return
-
-    @staticmethod
-    def ablation_sites_to_lesion(sites):
-        """Convert ablation sites data to base class lesions."""
-
-        lesions = []
-        for site in sites:
-            # Precision lesions only have color information, convert to
-            # numeric value as RFI
-            rfi_value = (site.color[0]
-                         + site.color[1] * 256
-                         + site.color[2] * 256**2
-                         )
-            rfi = RFIndex(name='precision', value=rfi_value)
-            lesions.append(AblationSite(X=site.X,
-                                        diameter=site.diameter,
-                                        RFIndex=[rfi]
-                                        )
-                           )
-
-        return lesions
-
-
-class PrecisionPoint(EPPoint):
-    """
-    Class representing a Precision mapping point.
-    """
-
-    def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=float),
-                 parent=None):
-        """Constructor."""
-
-        super().__init__(name, coordinates=coordinates, parent=parent)
-
-        # add Precision specific attributes
-        self.catheterName = ''
-        self.electrodeName = ''
-
-        self.displayed = False
-        self.utilized = False
-        self.exportedSeconds = np.nan
-        self.endTime = np.nan
-        self.pNegativeVoltage = np.nan
-        self.CFEMean = np.nan
-        self.CFEstd = np.nan
-        self.CFEDetection = None
-        self.algorithm = {}
-
-    def is_valid(self):
-        return self.utilized
