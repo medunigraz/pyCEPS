@@ -444,7 +444,7 @@ class PrecisionMap(EPMap):
         lesion_file = self.parent.repository.join(
             self.location + '/' + 'Lesions.csv'
         )
-        if self.parent.repository.is_file(lesion_file):
+        if not self.parent.repository.is_file(lesion_file):
             log.warning('no lesion data found ({})'.format(lesion_file))
             return
 
@@ -610,7 +610,7 @@ class PrecisionMap(EPMap):
     @staticmethod
     def ablation_sites_to_lesion(
             sites
-    ) -> List[AblationSite]:
+    ) -> Lesions:
         """
         Convert ablation sites data to base class lesions.
 
@@ -636,7 +636,7 @@ class PrecisionMap(EPMap):
                                         )
                            )
 
-        return lesions
+        return Lesions(lesions)
 
 
 class PrecisionStudy(EPStudy):
