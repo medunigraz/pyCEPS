@@ -618,6 +618,27 @@ class PrecisionMap(EPMap):
         log.info('cannot export point ECG data for Precision studies!')
         return
 
+    def get_version(
+            self,
+            minor=False
+    ) -> Union[str, Tuple[str, str]]:
+        """
+        Return version details.
+
+        Parameters:
+            minor : bool (optional)
+                return also minor version
+        """
+        try:
+            v_major, v_minor = self.version.split('.')
+        except ValueError:
+            # only major version available
+            v_major = self.version
+            v_minor = ''
+
+        return (v_major, v_minor) if minor else v_major
+
+
     @staticmethod
     def ablation_sites_to_lesion(
             sites
