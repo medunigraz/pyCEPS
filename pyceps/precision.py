@@ -185,7 +185,9 @@ class PrecisionMap(EPMap):
                 the parent study for this map
             surfaceFile : str
                 filename of file containing the anatomical shell data
-            location : str
+            surfaceFilePath : str
+                path to anatomical shell file
+            dataLocation : str
                 path to map data within repository
             surface : Surface
                 triangulated anatomical shell
@@ -202,7 +204,10 @@ class PrecisionMap(EPMap):
     def __init__(
             self,
             name: str,
-            location: str = '',
+            surface_file: str,
+            surface_file_path: str,
+            data_location: str,
+            version: str = '',
             parent: Optional['PrecisionStudy'] = None
     ) -> None:
         """
@@ -211,8 +216,14 @@ class PrecisionMap(EPMap):
         Parameters:
             name : str
                 name of the mapping procedure
-            location : str
-                path to map data within repository
+            surface_file : str
+                name of the file with anatomical shell data
+            surface_file_path : str
+                path to surface file relative to repository root
+            data_location : str
+                path to map data relative to repository root
+            version : str
+                file version used in export from the EAM system
             parent : PrecisionStudy (optional)
                 study this map belongs to
 
@@ -657,13 +668,11 @@ class PrecisionStudy(EPStudy):
             names of the mapping procedures contained in data set
         mapPoints : list of int
             number of points recorded during mapping procedure
+        mapInfo : list of MapInfo
+            details for mapping procedures (file location, version, etc.)
         maps : dict
             mapping procedures performed during study. Dictionary keys are
             the mapping procedure names (subset of mapNames attribute)
-        version : str
-            file version used in repository
-        mapLocations : list of str
-            path(s) to map data within the repository
         meshes : list of Surface objects (optional)
             additional meshes from e.g. CT data
     """
