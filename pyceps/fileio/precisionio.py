@@ -34,7 +34,7 @@ from pyceps.datatypes.signals import Trace
 logger = logging.getLogger(__name__)
 
 
-class _CommentedTreeBuilder(ET.TreeBuilder):
+class CommentedTreeBuilder(ET.TreeBuilder):
     """
     XML TreeBuilder that preserves comments.
 
@@ -46,9 +46,8 @@ class _CommentedTreeBuilder(ET.TreeBuilder):
         self.end('!comment')
 
 
-def read_landmark_geo(
+def read_mesh_file(
         fid: IO,
-        encoding: str = 'cp1252'
 ) -> Surface:
     """
     Load Precision Volume.
@@ -62,9 +61,7 @@ def read_landmark_geo(
 
     Parameters:
         fid : file-like
-            file handle to DxLandmarkGeo.xml
-        encoding : str
-            file encoding used to read file
+            file handle to geometry XML
     Raises:
         AttributeError : If file version is not supported
         AttributeError : If more than 1 volumes in file
@@ -87,7 +84,7 @@ def read_landmark_geo(
 
     # build XML tree and get root element
     tree = ET.parse(fid,
-                    parser=ET.XMLParser(target=_CommentedTreeBuilder()))
+                    parser=ET.XMLParser(target=CommentedTreeBuilder()))
     root = tree.getroot()
 
     # check version
