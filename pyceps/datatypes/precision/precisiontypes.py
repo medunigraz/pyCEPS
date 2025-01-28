@@ -19,6 +19,84 @@
 from collections import namedtuple
 
 
+RepositoryInfo = namedtuple('RepositoryInfo',
+                            ['studyName',
+                             'surfaceFile',
+                             'surfaceFilePath'])
+RepositoryInfo.__doc__ = """
+A named tuple with details about the structure of a Precision data repository.
+
+Fields:
+    studyName : str
+        name extracted from anatomical shell data.
+    surfaceFile : str
+        name of the file containing anatomical shell data
+    surfaceFilePath : str
+        path to the surface file, relative to repository root folder
+"""
+
+StudyInfo = namedtuple('StudyInfo',
+                       ['name',
+                        'mapInfo'
+                        ])
+StudyInfo.__doc__ = """
+A named tuple with details of a Precision study.
+
+Fields:
+    name : str
+        name of the study
+    mapInfo : list of MapInfo
+        detailed information about the maps stored with this study
+"""
+
+MapInfo = namedtuple('MapInfo',
+                     ['name',
+                      'surfaceFile',
+                      'surfaceFilePath',
+                      'dataLocation',
+                      'mapType',
+                      'version'
+                      ])
+MapInfo.__doc__ = """
+A named tuple with details of a mapping procedure for a Precision study.
+
+Fields:
+    name : list of str
+    surfaceFile : str
+        name of the surface file for this map
+    surfaceFilePath : str
+        path to the surface file, relative to repository root folder
+    dataLocation : str
+        path to data files for this map, relative to repository root folder
+    mapType : str
+        type specifier
+    version : str
+        file version used in export from the EAM system
+"""
+
+FileInfo = namedtuple('FileInfo',
+                      ['studyName',
+                       'mapNames',
+                       'dataPath',
+                       'mapType',
+                       'version'])
+FileInfo.__doc__ = """
+A named tuple with information extracted from data file headers.
+
+Fields:
+    studyName : str
+        name of the study the files belong to
+    mapNames : list of str 
+        names of maps extracted from data files
+    dataPath : str
+        path to the data files, relative to repository root folder
+    mapType : list of str
+        type specifier for each map name
+    version : str
+        file version of data files
+"""
+
+
 PrecisionSurfaceLabel = namedtuple('PrecisionSurfaceLabel',
                                    ['name', 'X'])
 
