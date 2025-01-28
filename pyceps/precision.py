@@ -19,7 +19,7 @@
 import os
 import logging
 import copy
-from typing import Optional, Union, List, TypeVar
+from typing import Optional, Union, List, TypeVar, Tuple
 import zipfile
 import py7zr
 from xml.etree import ElementTree as ET
@@ -38,11 +38,15 @@ from pyceps.fileio.xmlio import (
     xml_load_binary_trace,
     xml_load_binary_bsecg,
 )
-from pyceps.datatypes.precision.precisiontypes import DetectionAlgorithm
+from pyceps.datatypes.precision.precisiontypes import (
+    RepositoryInfo, StudyInfo, MapInfo, FileInfo,
+    DetectionAlgorithm
+)
 from pyceps.datatypes.signals import Trace, BodySurfaceECG
 from pyceps.datatypes.lesions import Lesions, RFIndex, AblationSite
 from pyceps.fileio.precisionio import (
-    read_landmark_geo, load_dxl_data,
+    CommentedTreeBuilder,
+    read_mesh_file, load_dxl_data,
     load_ecg_data, load_lesion_data
 )
 from pyceps.datatypes.exceptions import MeshFileNotFoundError
@@ -292,14 +296,26 @@ class PrecisionMap(EPMap):
 
         log.info('reading Precision mesh {}'.format(self.surfaceFile))
 
+        major = self.get_version()
+
+        if 5 <= int(major) < 10:
+            # try if DxLandmarkGeo.xml is available
+            geo_file = self.parent.repository.list_dir(
+                self.parent.repository.join(self.dataLocation),
+                regex=r'(.*)Landmark(.*).xml'
+            )
+            # set DxLandmarkGeo.xml as valid surface file
+            if len(geo_file) == 1:
+                self.surfaceFile = geo_file[0]
+                self.surfaceFilePath = self.dataLocation
+
         mesh_file = self.parent.repository.join(
-            self.location + '/' + self.surfaceFile
-        )
+            self.surfaceFilePath + '/' + self.surfaceFile)
         if not self.parent.repository.is_file(mesh_file):
             raise MeshFileNotFoundError(filename=self.surfaceFile)
 
         with self.parent.repository.open(mesh_file, mode='rb') as fid:
-            return read_landmark_geo(fid, encoding=self.parent.encoding)
+            return read_mesh_file(fid)
 
     def load_points(
             self
@@ -307,21 +323,57 @@ class PrecisionMap(EPMap):
         """
         Load points for Precision map.
 
-        Point information is found in "DxL_#.csv" files.
-
         Returns:
             list of PrecisionPoint
         """
 
         log.info('import EGM points')
 
+        major = self.get_version()
+
+        if 5 <= int(major) < 10:
+            return self.load_points_v5()
+        elif 10 <= int(major):
+            return self.load_points_v10()
+
+    def load_points_v10(
+            self
+    ) -> List[PrecisionPoint]:
+        """
+        Load points for PrecisionX.
+
+        Returns:
+            list of PrecisionPoint
+        """
+
+        points = []
+
+        # get all map CSV
+        filelist = self.parent.repository.list_dir(
+            self.parent.repository.join(self.dataLocation),
+            regex=r'(.*)Map_(.*).csv'
+        )
+
+
+        return points
+
+    def load_points_v5(
+            self
+    ) -> List[PrecisionPoint]:
+        """
+        Load points for file version 5 (Precision).
+        Point information is found in "DxL_#.csv" files.
+
+        Returns:
+            list of PrecisionPoint
+        """
+
         points = []
 
         # get all DxL files in root folder
-        dxl_regex = re.compile('DxL.*csv')
         dxl_files = self.parent.repository.list_dir(
-            self.parent.repository.join(self.location),
-            regex=dxl_regex
+            self.parent.repository.join(self.dataLocation),
+            regex='DxL.*csv'
         )
         dxl_files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
@@ -335,7 +387,9 @@ class PrecisionMap(EPMap):
             )
 
             # load file data
-            file = self.parent.repository.join(self.location + '/' + filename)
+            file = self.parent.repository.join(
+                self.dataLocation + '/' + filename
+            )
             with self.parent.repository.open(file) as fid:
                 header, point_data, ecg_data, cfe_data = load_dxl_data(
                     fid,
@@ -453,7 +507,7 @@ class PrecisionMap(EPMap):
         log.info('loading lesion data for map {}'.format(self.name))
 
         lesion_file = self.parent.repository.join(
-            self.location + '/' + 'Lesions.csv'
+            self.dataLocation + '/' + 'Lesions.csv'
         )
         if not self.parent.repository.is_file(lesion_file):
             log.warning('no lesion data found ({})'.format(lesion_file))
@@ -492,7 +546,8 @@ class PrecisionMap(EPMap):
         log.info('loading ECGs for map {}'.format(self.name))
 
         ecg_file = self.parent.repository.join(
-            self.location + '/' + 'ECG_RAW.csv')
+            self.dataLocation + '/' + 'ECG_RAW.csv'
+        )
         if not self.parent.repository.is_file(ecg_file):
             log.warning('no ECG data found ({})'.format(ecg_file))
             return []
@@ -755,69 +810,123 @@ class PrecisionStudy(EPStudy):
 
     def get_study_info(
             self
-    ) -> Optional[dict]:
+    ) -> StudyInfo:
         """
         Load basic info about study from repository.
 
+        Raises:
+            ValueError : if no anatomical shells found in repository
+            ValueError : if study name is not found in data files
+            TypeError : if study names in repository are inconsistent
+            FileNotFoundError : if no data files are found in repository
+
         Returns:
-            dict
-                'name' : study name
-                'version' : version with which this was created
-                'maps' : list of tuple
-                    names and path of mapping procedures
+            StudyInfo
         """
 
         log.debug('searching for data in {}'.format(self.repository))
 
-        def check_folder(
-                path: Repository,
-                structure: List[tuple[str, str, str, str]]
-        ) -> Optional[List[tuple[str, str, str, str]]]:
-            """
-            Search this folder tree for Precision data.
+        # search for anatomical shells in repository
+        repo_info = self.get_repository_structure(self.repository)
 
-            Returns:
-                List of tuple or empty list
-                    name : str
-                    map_name : str
-                    version : str
-                    loc : str (data path relative to repository root)
-            """
+        if len(repo_info) == 0:
+            raise ValueError('No anatomical shells found in {}'
+                             .format(self.repository))
 
-            file_matches = path.list_dir(path.join(''),
-                                         regex=r'Model(.*)Groups.xml'
-                                         )
-            if file_matches:
-                map_name = os.path.basename(path.get_root_string())
-                map_loc = ''
-                version = '0.0'
-                study_name = ''
+        # check if study name is consistent
+        if len(repo_info) > 1 and not all(i.studyName == repo_info[0].studyName
+                                          for i in repo_info
+                                          ):
+            raise TypeError('study names in {} are inconsistent!'
+                            .format(self.repository))
 
-                # get version info from timeline .csv
-                csv_file = path.list_dir(path.join(''),
-                                         regex=r'NotebookByTime.csv'
-                                         )
-                if not csv_file:
-                    log.warning('unable to find NotebookByTime.csv, cannot '
-                                'retrieve study info!')
-                else:
-                    with path.open(path.join(csv_file[0])) as fid:
-                        # read first 10 lines, should contain all info needed
-                        header = [next(fid).decode(encoding=self.encoding).rstrip()
-                                  for _ in range(10)]
-                        for line in header:
-                            if 'File Revision' in line:
-                                version = line.split(':')[1].strip()
-                            if 'Export from Study' in line:
-                                study_name = line.split(':')[1].strip()
-                    map_loc = os.path.relpath(path.get_root_string(),
-                                              path.get_base_string()
-                                              )
+        study_name = repo_info[0].studyName
+        log.info('found study {}'.format(study_name))
 
-                return [
-                    (study_name, map_name, version, map_loc)
-                ]
+        # get map info
+        map_info = []
+        for surface in repo_info:
+            path = surface.surfaceFilePath
+            # search for data files associated with this anatomical shell
+            file_info = self.get_map_structure(path)
 
+            if not file_info:
+                log.debug('no data files found in {}'.format(path))
+                # no matches found, continue search
+                search_path = self.repository.join(path)
+                folders = [f for f in self.repository.list_dir(search_path)
+                           if self.repository.is_folder(
+                        self.repository.join(search_path + '//' + f))
+                           or self.repository.is_archive(
+                        self.repository.join(search_path + '//' + f))
+                           ]
+                log.debug('found subdirectories: {}'.format(folders))
+
+                for folder in folders:
+                    # update root location and start new search there
+                    # temp_repo = copy.copy(path)
+                    # temp_repo.update_root(path.join(folder))
+                    # file_info += self.get_map_structure(temp_repo)
+                    folder_path = self.repository.join(search_path + '//' +
+                                                       folder)
+                    file_info = self.get_map_structure(folder_path)
+
+            if not file_info:
+                # still no data found, something is wrong
+                raise FileNotFoundError('No data files found in {}'.format(
+                    path))
+
+            # check if files are from same study
+            if study_name not in [r[0] for r in file_info]:
+                raise ValueError('study name not found in data files')
+
+            # continue with data for this study only
+            file_info = [r for r in file_info if r[0] == study_name][0]
+
+            # data_location = os.path.relpath(path, os.path.join(path, file))
+            # make paths relative to repository root
+            # for item in repo_info:
+            #     item.surfaceFilePath = os.path.relpath(
+            #         item.surfaceFilePath,
+            #         self.repository.get_root_string()
+            #     )
+
+            map_info.append(MapInfo(name=file_info.mapNames,
+                                    surfaceFile=surface.surfaceFile,
+                                    surfaceFilePath=surface.surfaceFilePath,
+                                    dataLocation=file_info.dataPath,
+                                    mapType=file_info.mapType,
+                                    version=file_info.version
+                                    )
+                            )
+
+        return StudyInfo(name=study_name, mapInfo=map_info)
+
+    def get_repository_structure(
+            self,
+            path: Repository
+    ) -> List[RepositoryInfo]:
+        """
+        Search for Precision data in repository.
+
+        Parameters:
+            path : str
+                path relative to repository base to search recursively for
+                Precision data.
+
+        Returns:
+            list of RepositoryInfo
+                details for each anatomical shell found in repository
+        """
+
+        repo_structure = []
+        # find geometry data
+        file_matches = path.list_dir(path.join(''),
+                                     regex=r'(.*)Model(.*).xml'
+                                     )
+
+        if not file_matches:
+            log.debug('No model files found in {}'.format(path))
             # no matches found, continue search
             folders = [f for f in path.list_dir(path.join(''))
                        if path.is_folder(path.join(f))
@@ -829,39 +938,169 @@ class PrecisionStudy(EPStudy):
                 # update root location and start new search there
                 temp_repo = copy.copy(path)
                 temp_repo.update_root(path.join(folder))
-                structure += check_folder(temp_repo, structure)
+                repo_structure.extend(
+                    self.get_repository_structure(temp_repo)
+                )
 
-            # no data found
-            return []
+        for surfaceFile in file_matches:
+            with open(path.join(surfaceFile)) as fid:
+                tree = ET.parse(fid, parser=ET.XMLParser(
+                    target=CommentedTreeBuilder()))
+                root = tree.getroot()
 
-        # search directory tree
-        study_structure = []
-        study_structure += check_folder(self.repository, study_structure)
+                study_name = root.find('DIFHeader').find('StudyID')
+                if study_name is None:
+                    log.debug('study name not found in DIFHeader of {}'
+                              .format(fid.name)
+                              )
 
-        if not study_structure:
+                    volumes_item = root.find('DIFBody').find('Volumes')
+                    volumes = volumes_item.findall('Volume')
+                    for volume in volumes:
+                        volume_name = volume.get('name')
+                        log.debug('found volume {} in {}'
+                                  .format(volume_name, fid.name))
+                        for i, elem in enumerate(volume):
+                            if 'Exported from study' in elem.text:
+                                study_name = elem.text.split(
+                                    'Exported from study')[-1].strip()
+                                log.debug('found study name {}'
+                                          .format(study_name)
+                                          )
+                else:
+                    study_name = study_name.text.strip()
+                    log.debug('found study name in DIFHeader {}'
+                              .format(study_name)
+                              )
+
+            repo_structure.append(
+                RepositoryInfo(studyName=study_name,
+                               surfaceFile=surfaceFile,
+                               surfaceFilePath=os.path.relpath(
+                                   path.get_root_string(),
+                                   path.get_base_string()
+                                   )
+                               )
+            )
+
+        return repo_structure
+
+    def get_map_structure(
+            self,
+            path: str
+    ) -> Optional[List[FileInfo]]:
+        """
+        Search folder for Precision mapping data.
+
+        Returns:
+            list of FileInfo
+        """
+
+        # file_list = path.list_dir(path.join(''), regex=r'(.*).csv')
+        file_list = self.repository.list_dir(self.repository.join(path),
+                                             regex=r'(.*).csv')
+
+        if not file_list:
+            log.debug('no mapping data found in {}'.format(path))
             return None
 
-        # build study info from tree structure
-        # check if all maps are from same study
-        if not all([x[0] == study_structure[0][0] for x in study_structure]):
-            raise TypeError('data comes from different studies!')
-        # check if file version is same for all maps
-        if not all([x[2] == study_structure[0][2] for x in study_structure]):
-            raise TypeError('data contains different file formats!')
-        # build map names and location
-        map_info = []
-        for pmap in study_structure:
-            name = pmap[1]
-            loc = pmap[3]
-            map_info.append((name, loc))
+        results = []
+        for i, file in enumerate(file_list):
+            version = ''
+            study_name = ''
+            map_name = ''
+            map_type = ''
 
-        study_info = dict()
-        study_info['name'] = study_structure[0][0]
-        study_info['version'] = study_structure[0][2]
-        study_info['maps'] = map_info
+            file_path = self.repository.join(path + '/' + file)
+            with self.repository.open(file_path) as fid:
+                # read first n lines of header information
+                NUM_LINES = 60
+                try:
+                    header = [next(fid).decode(encoding=self.encoding)
+                              for _ in range(NUM_LINES)
+                              ]
+                    header = '\n'.join(header)
+                except StopIteration:
+                    pass
 
-        # no data was found
-        return study_info
+            # get version info
+            pattern = re.compile(
+                r'(?s).*File (Revision|Version)\s*:\s*(?P<version>[^\r\n]+)',
+                re.MULTILINE
+            )
+            matches = pattern.match(header)
+            if matches is not None:
+                version = matches.group('version')
+
+            # get study name
+            pattern = re.compile(
+                r'(?s).*Export from Study\s*:\s*(?P<name>[^\r\n]+)',
+                re.MULTILINE)
+            matches = pattern.match(header)
+            if matches is not None:
+                study_name = matches.group('name')
+
+            # get map name
+            pattern = re.compile(
+                r'(?s).*Map name\s*:\s*,(?P<name>[^\r\n]+)',
+                re.MULTILINE
+            )
+            matches = pattern.match(header)
+            if matches is None:
+                pattern = re.compile(
+                    r'(?s).*This is file \d+ of \d+ for map,\s*(?P<name>[^\r\n]+)',
+                    re.MULTILINE
+                )
+                matches = pattern.match(header)
+            if matches is not None:
+                map_name = matches.group('name')
+
+            # get map type
+            pattern = re.compile(
+                r'(?s).*Map type\s*:\s*,(?P<type>[^\r\n]+)',
+                re.MULTILINE
+            )
+            matches = pattern.match(header)
+            if matches is not None:
+                map_type = matches.group('type')
+
+            results.append([study_name, map_name, map_type, version])
+
+        # consolidate results
+        results = np.array(results)
+        # drop empty rows
+        results = results[~np.all(results == '', axis=1)]
+        # get study names
+        names = [str(n) for n in np.unique(results[:, 0])]
+
+        info = []
+        for n in names:
+            # get data for this study
+            data = results[results[:, 0] == n]
+            # check file version
+            # drop files with no version info
+            version = data[data[:, 3] != '']
+            # check if version is same for all
+            if not (version[:, 3] == version[0, 3]).all():
+                raise KeyError('version number mismatch in data!')
+            version = str(version[0, 3])
+
+            # check map name
+            # drop files with no map info
+            maps = data[data[:, 1] != '']
+            # get all map names
+            maps = [str(x) for x in np.unique(maps[:, 1])]
+
+            # check map type
+            # drop files with no map info
+            map_type = data[data[:, 2] != '']
+            # get all map names
+            map_type = [str(x) for x in np.unique(map_type[:, 2])]
+
+            info.append(FileInfo(studyName=n, mapNames=maps, dataPath=path,
+                                 version=version, mapType=map_type))
+
+        return info
 
     def import_maps(
             self,
@@ -887,15 +1126,22 @@ class PrecisionStudy(EPStudy):
         """
 
         # do some pre-import checks
-        map_names = super().import_maps()
+        map_names = super().import_maps(map_names)
 
         # now import maps
         for i, map_name in enumerate(map_names):
+            map_item = [m for m in self.mapInfo if map_name in m.name][0]
             try:
-                map_location = self.mapLocations[i]
                 log.info('importing map {} from {}:'
-                         .format(map_name, map_location))
-                new_map = PrecisionMap(map_name, map_location, parent=self)
+                         .format(map_name, map_item.dataLocation))
+                new_map = PrecisionMap(
+                    name=map_name,
+                    surface_file=map_item.surfaceFile,
+                    surface_file_path=map_item.surfaceFilePath,
+                    data_location=map_item.dataLocation,
+                    version=map_item.version,
+                    parent=self
+                )
                 new_map.import_map()
                 self.maps[map_name] = new_map
                 self.mapPoints[i] = len(new_map.points)
@@ -940,11 +1186,17 @@ class PrecisionStudy(EPStudy):
                  .format(' ' + root_dir + ' ' if root_dir else ' '))
 
         if not root_dir:
-            for folder in self.mapLocations:
-                path = self.repository.join(folder)
+            for pmap in self.maps.values():
+                path = self.repository.join(pmap.dataLocation)
                 if not self.repository.is_folder(path):
-                    log.warning('cannot find {} in repository!'.format(folder))
-                    # map location does not exist
+                    log.warning('cannot find data folder "{}" in repository!'
+                                .format(pmap.dataLocation))
+                    return False
+                path = self.repository.join(pmap.surfaceFilePath)
+                if not self.repository.is_folder(path):
+                    log.warning('cannot find surface data folder "{}" in '
+                                'repository!'
+                                .format(pmap.surfaceFilePath))
                     return False
                 # all map folders found, valid
                 return True
@@ -965,11 +1217,11 @@ class PrecisionStudy(EPStudy):
                 return False
 
             # if study name is correct, assume valid repository
-            if study_info['name'] == self.name:
+            if study_info.name == self.name:
                 return True
 
             log.warning('study name in repository ({}) does not match!'
-                        .format(study_info['name'])
+                        .format(study_info.name)
                         )
 
         # at this point root is definitely invalid
@@ -1156,11 +1408,15 @@ class PrecisionStudy(EPStudy):
 
         for proc in proc_item.iter('Procedure'):
             name = proc.get('name')
-            location = proc.get('location')
-            # add location to study
-            study.mapLocations.append(location)
+            surf_file = proc.get('surfaceFile')
+            surf_file_loc = proc.get('surfaceFilePath')
+            data_location = proc.get('dataLocation')
 
-            new_map = PrecisionMap(name, location, parent=study)
+            new_map = PrecisionMap(name,
+                                   surface_file=surf_file,
+                                   surface_file_path=surf_file_loc,
+                                   data_location=data_location,
+                                   parent=study)
 
             # load mesh
             mesh_item = proc.find('Mesh')
@@ -1263,15 +1519,15 @@ class PrecisionStudy(EPStudy):
             # no base info was created (no maps imported), nothing to add
             return filepath
 
-        # add Precision specific data
-        root.set('file_version', self.version)
-
         for key, cmap in self.maps.items():
             map_item = [p for p in root.iter('Procedure')
                         if p.get('name') == key][0]
 
             # add additional procedure info
-            map_item.set('location', cmap.location)
+            map_item.set('surfaceFile', cmap.surfaceFile)
+            map_item.set('surfaceFilePath', cmap.surfaceFilePath)
+            map_item.set('dataLocation', cmap.dataLocation)
+            map_item.set('version', cmap.version)
 
             # add additional point info
             point_item = map_item.find('Points')
