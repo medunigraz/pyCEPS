@@ -243,8 +243,10 @@ class PrecisionMap(EPMap):
         self.parent = parent
 
         # add Precision specific attributes
-        self.surfaceFile = 'DxLandmarkGeo.xml'
-        self.location = location
+        self.version = version  # file version for data files
+        self.surfaceFile = surface_file
+        self.surfaceFilePath = surface_file_path
+        self.dataLocation = data_location
         self.ablationSites = []
 
     def import_map(
@@ -709,8 +711,7 @@ class PrecisionStudy(EPStudy):
                          pwd=pwd,
                          encoding=encoding)
 
-        self.version = '0.0'  # system version creating the data
-        self.mapLocations = []  # location of map data within repository
+        self.mapInfo = []  # location of map data within repository
 
     def import_study(
             self
@@ -725,12 +726,11 @@ class PrecisionStudy(EPStudy):
         # evaluate study name
         study_info = self.get_study_info()
 
-        self.name = study_info['name']
-        self.version = study_info['version']
-        self.mapNames = [m[0] for m in study_info['maps']]
-        self.mapLocations = [m[1] for m in study_info['maps']]
+        self.name = study_info.name
+        self.mapNames = [name for m in study_info.mapInfo for name in m.name]
         # number of points is undetermined for now...
         self.mapPoints = [np.nan] * len(self.mapNames)
+        self.mapInfo = study_info.mapInfo
 
     def get_study_info(
             self
