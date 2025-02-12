@@ -298,13 +298,48 @@ class CartoPoint(EPPoint):
         num_samples = min(num_samples)
 
         # build egm traces
-        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
-        egmUni = [
-            [t for t in egm_data if t.name == egm_names['uni1']][0],
-            [t for t in egm_data if t.name == egm_names['uni2']][0]
-        ]
-        self.egmUni = egmUni
-        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
+        trace = [t for t in egm_data if t.name == egm_names['bip']]
+        if not trace:
+            log.warning('no bipolar EGM data (channel: {}) found for point {}'
+                        .format(egm_names['bip'], self.name))
+            self.egmBip = Trace(name=egm_names['bip'],
+                                data=np.full(num_samples, [np.nan]),
+                                fs=1000.0
+                                )
+        else:
+            self.egmBip = trace[0]
+
+        trace = [t for t in egm_data if t.name == egm_names['uni1']]
+        if not trace:
+            log.warning('no unipolar EGM data (channel: {}) found for point {}'
+                        .format(egm_names['uni1'], self.name))
+            self.egmUni = [Trace(name=egm_names['uni1'],
+                                data=np.full(num_samples, [np.nan]),
+                                fs=1000.0
+                                )
+                           ]
+        else:
+            self.egmUni = [trace[0]]
+
+        trace = [t for t in egm_data if t.name == egm_names['uni2']]
+        if not trace:
+            log.warning('no reference EGM data (channel: {}) found for point {}'
+                        .format(egm_names['uni2'], self.name))
+            self.egmUni.append(Trace(name=egm_names['uni2'],
+                                     data=np.full(num_samples, [np.nan]),
+                                     fs=1000.0
+                                     )
+                               )
+        else:
+            self.egmUni.append(trace[0])
+
+        trace = [t for t in egm_data if t.name == egm_names['ref']]
+        if not trace:
+            log.warning('no reference EGM data (channel: {}) found for point {}'
+                        .format(egm_names['bip'], self.name))
+            self.egmRef = np.full(num_samples, [np.nan])
+        else:
+            self.egmRef = trace[0]
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
