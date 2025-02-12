@@ -289,6 +289,14 @@ class CartoPoint(EPPoint):
                                   egm_names['uni1'],
                                   egm_names['uni2'],
                                   egm_names['ref']])
+        # sanity check
+        num_samples = [len(t.data) for t in egm_data]
+        if not all(x == num_samples[0] for x in num_samples):
+            log.warning('EGM data size inconsistent. Truncating to smallest!')
+            for t in egm_data:
+                t.data = t.data[0:num_samples]
+        num_samples = min(num_samples)
+
         # build egm traces
         self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
         egmUni = [
