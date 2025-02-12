@@ -432,8 +432,10 @@ class CartoPoint(EPPoint):
                          if not any([channel.startswith(item+'(')
                                      for channel in ecg_channels])]
         if not_found:
-            raise KeyError('channel(s) {} not found for point {}'
-                           .format(not_found, self.name))
+            log.debug('channel(s) {} not found for point {}'
+                        .format(not_found, self.name))
+            # remove channels from import list
+            channel_names = [n for n in channel_names if n not in not_found]
 
         if not reload:
             # check which data is already loaded
