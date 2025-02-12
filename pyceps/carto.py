@@ -513,10 +513,15 @@ class CartoPoint(EPPoint):
                 uni_name1 = connector + '_' + channel_num[0]
                 uni_name2 = connector + '_' + channel_num[1]
             except ValueError:
-                # some connectors don't add the connector name at beginning
-                channel_names = ecg_header['name_bip'].split('-')
-                uni_name1 = channel_names[0]
-                uni_name2 = channel_names[1]
+                try:
+                    # some connectors don't add the connector name at beginning
+                    channel_names = ecg_header['name_bip'].split('-')
+                    uni_name1 = channel_names[0]
+                    uni_name2 = channel_names[1]
+                except IndexError:
+                    # cannot work out unipolar channel names
+                    uni_name1 = ''
+                    uni_name2 = ''
 
         # compare extracted names with header info
         if not uni_name1 == ecg_header['name_uni']:
