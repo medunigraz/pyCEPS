@@ -1053,7 +1053,8 @@ class PrecisionStudy(EPStudy):
                 )
                 matches = pattern.match(header)
             if matches is not None:
-                map_name = matches.group('name')
+                # map name found, remove escape characters if necessary
+                map_name = re.sub('[^A-Za-z0-9]+', '', matches.group('name'))
 
             # get map type
             pattern = re.compile(
