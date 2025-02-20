@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- import/export for EnSite Precision v5.2 (Robert Arnold)
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [1.0.4] - 2024-08-26
 
 ### Added
