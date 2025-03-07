@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.0.5]
 
 ### Added
 
@@ -9,6 +9,9 @@
 ### Changed
 
 ### Fixed
+
+- EGM data import if channel name is not found in data (Robert Arnold)
+- wrong data size when reading PaSo templates (Robert Arnold)
 
 ### Removed
 
@@ -181,6 +184,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.0.5]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.5
 [1.0.4]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.4
 [1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
 [1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2
