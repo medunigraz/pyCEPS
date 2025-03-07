@@ -346,6 +346,7 @@ def load_study(args):
             study = PrecisionStudy(args.study_repository,
                                    pwd=args.password,
                                    encoding=args.encoding)
+            study.import_study()
         else:
             raise KeyError('unknown EAM system specified!')
 
@@ -386,7 +387,7 @@ def load_study(args):
                                     password=args.password,
                                     repository_path=args.change_root
                                     )
-        elif args.system == 'precision':
+        elif system.lower() == 'precision':
             study = PrecisionStudy.load(args.study_file,
                                         password=args.password,
                                         repository_path=args.change_root
@@ -460,8 +461,6 @@ def export_map_data(study, map_name, args):
     if args.dump_paso:
         if isinstance(study, CartoStudy):
             study.export_paso(out_path)
-        else:
-            logger.info('PaSo data can only be exported for Carto studies')
 
     # check if additional meshes are part of the study
     if study.meshes and args.dump_mesh:

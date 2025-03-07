@@ -39,9 +39,29 @@ dxlDataHeader = namedtuple('dxlDataHeader',
 
 DetectionAlgorithm = namedtuple('DetectionAlgorithm',
                                 ['code', 'parameter'])
+DetectionAlgorithm.__doc__ = """
+A named tuple representing detection algorithm in DxL data.
+
+Fields:
+    code : str
+        detection algorithm code
+    parameter : str
+        detection algorithm parameter
+"""
 
 CFEDetection = namedtuple('CFEDetection',
                           ['trace', 'count', 'sampleIndex'])
+CFEDetection.__doc__ = """
+A named tuple representing CFE detection details
+
+Fields:
+    trace : str
+        detection roving trace name
+    count : int
+        CFE detection count
+    sampleIndex : ndarray of type int
+        CFE detection sample index
+"""
 
 UniChannelConfig = namedtuple('ChannelConfig',
                               ['channel', 'cath', 'electrode', 'visible'])
