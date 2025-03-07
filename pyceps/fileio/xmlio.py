@@ -324,9 +324,15 @@ def xml_load_binary_bsecg(
 
     for item in element.findall('BSECG'):
         _, traces = xml_load_binary_trace(item.find('Traces'))
+        ref_annotation = item.get('refAnnotation')
+        if ref_annotation == 'nan':
+            ref_annotation = 0
+        else:
+            ref_annotation = int(ref_annotation)
+
         bsecg.append(
             BodySurfaceECG(method=item.get('method'),
-                           refAnnotation=int(item.get('refAnnotation')),
+                           refAnnotation=ref_annotation,
                            traces=traces
                            )
                      )

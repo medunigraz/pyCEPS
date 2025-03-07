@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import numpy as np
 import scipy.spatial.distance as sp_distance
-from itertools import compress, zip_longest
+from itertools import compress
 
 from pyceps.fileio.pathtools import Repository
 from pyceps.study import EPStudy, EPMap, EPPoint
@@ -289,14 +289,57 @@ class CartoPoint(EPPoint):
                                   egm_names['uni1'],
                                   egm_names['uni2'],
                                   egm_names['ref']])
+        # sanity check
+        num_samples = [len(t.data) for t in egm_data]
+        if not all(x == num_samples[0] for x in num_samples):
+            log.warning('EGM data size inconsistent. Truncating to smallest!')
+            for t in egm_data:
+                t.data = t.data[0:num_samples]
+        num_samples = min(num_samples)
+
         # build egm traces
-        self.egmBip = [t for t in egm_data if t.name == egm_names['bip']][0]
-        egmUni = [
-            [t for t in egm_data if t.name == egm_names['uni1']][0],
-            [t for t in egm_data if t.name == egm_names['uni2']][0]
-        ]
-        self.egmUni = egmUni
-        self.egmRef = [t for t in egm_data if t.name == egm_names['ref']][0]
+        trace = [t for t in egm_data if t.name == egm_names['bip']]
+        if not trace:
+            log.warning('no bipolar EGM data (channel: {}) found for point {}'
+                        .format(egm_names['bip'], self.name))
+            self.egmBip = Trace(name=egm_names['bip'],
+                                data=np.full(num_samples, [np.nan]),
+                                fs=1000.0
+                                )
+        else:
+            self.egmBip = trace[0]
+
+        trace = [t for t in egm_data if t.name == egm_names['uni1']]
+        if not trace:
+            log.warning('no unipolar EGM data (channel: {}) found for point {}'
+                        .format(egm_names['uni1'], self.name))
+            self.egmUni = [Trace(name=egm_names['uni1'],
+                                data=np.full(num_samples, [np.nan]),
+                                fs=1000.0
+                                )
+                           ]
+        else:
+            self.egmUni = [trace[0]]
+
+        trace = [t for t in egm_data if t.name == egm_names['uni2']]
+        if not trace:
+            log.warning('no reference EGM data (channel: {}) found for point {}'
+                        .format(egm_names['uni2'], self.name))
+            self.egmUni.append(Trace(name=egm_names['uni2'],
+                                     data=np.full(num_samples, [np.nan]),
+                                     fs=1000.0
+                                     )
+                               )
+        else:
+            self.egmUni.append(trace[0])
+
+        trace = [t for t in egm_data if t.name == egm_names['ref']]
+        if not trace:
+            log.warning('no reference EGM data (channel: {}) found for point {}'
+                        .format(egm_names['bip'], self.name))
+            self.egmRef = np.full(num_samples, [np.nan])
+        else:
+            self.egmRef = trace[0]
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
@@ -432,8 +475,10 @@ class CartoPoint(EPPoint):
                          if not any([channel.startswith(item+'(')
                                      for channel in ecg_channels])]
         if not_found:
-            raise KeyError('channel(s) {} not found for point {}'
-                           .format(not_found, self.name))
+            log.debug('channel(s) {} not found for point {}'
+                        .format(not_found, self.name))
+            # remove channels from import list
+            channel_names = [n for n in channel_names if n not in not_found]
 
         if not reload:
             # check which data is already loaded
@@ -511,10 +556,15 @@ class CartoPoint(EPPoint):
                 uni_name1 = connector + '_' + channel_num[0]
                 uni_name2 = connector + '_' + channel_num[1]
             except ValueError:
-                # some connectors don't add the connector name at beginning
-                channel_names = ecg_header['name_bip'].split('-')
-                uni_name1 = channel_names[0]
-                uni_name2 = channel_names[1]
+                try:
+                    # some connectors don't add the connector name at beginning
+                    channel_names = ecg_header['name_bip'].split('-')
+                    uni_name1 = channel_names[0]
+                    uni_name2 = channel_names[1]
+                except IndexError:
+                    # cannot work out unipolar channel names
+                    uni_name1 = ''
+                    uni_name2 = ''
 
         # compare extracted names with header info
         if not uni_name1 == ecg_header['name_uni']:
