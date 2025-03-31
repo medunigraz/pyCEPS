@@ -252,7 +252,7 @@ def xml_load_binary_data(
 
 def xml_load_binary_trace(
         element: ET.Element
-) -> tuple[Optional[str], Optional[Union[Trace, List[Trace]]]]:
+) -> tuple[Optional[str], Optional[List[List[Trace]]]]:
     """
     Load binary Traces from etree element.
 
@@ -297,7 +297,7 @@ def xml_load_binary_trace(
         traces = [[row[i] for row in traces]
                   for i in range(max(len(r) for r in traces))]
     else:
-        traces = traces[0]
+        traces = [[t] for t in traces[0]]
 
     return trace_name, traces
 
@@ -324,6 +324,8 @@ def xml_load_binary_bsecg(
 
     for item in element.findall('BSECG'):
         _, traces = xml_load_binary_trace(item.find('Traces'))
+        # flatten list of list
+        traces = [t[0] for t in traces]
         ref_annotation = item.get('refAnnotation')
         if ref_annotation == 'nan':
             ref_annotation = 0
