@@ -275,14 +275,16 @@ class CartoPoint(EPPoint):
         egm_names = self._channel_names_from_ecg_header(ecg_file_header)
 
         # get coordinates of second unipolar channel
-        self.uniX = self._get_2nd_uni_x(encoding=self.parent.parent.encoding)
+        self.uniX[:, 0] = self._get_2nd_uni_x(
+            encoding=self.parent.parent.encoding
+        )
 
         if egm_names_from_pos:
             egm_names, uniCoordinates = self._channel_names_from_pos_file(
                 egm_names,
                 encoding=self.parent.parent.encoding
             )
-            self.uniX = uniCoordinates
+            self.uniX[:, 0] = uniCoordinates
 
         # now we can import the electrograms for this point
         egm_data = self.load_ecg([egm_names['bip'],
@@ -302,12 +304,13 @@ class CartoPoint(EPPoint):
         if not trace:
             log.warning('no bipolar EGM data (channel: {}) found for point {}'
                         .format(egm_names['bip'], self.name))
-            self.egmBip = Trace(name=egm_names['bip'],
+            self.egmBip = [Trace(name=egm_names['bip'],
                                 data=np.full(num_samples, [np.nan]),
                                 fs=1000.0
                                 )
+                           ]
         else:
-            self.egmBip = trace[0]
+            self.egmBip = trace
 
         trace = [t for t in egm_data if t.name == egm_names['uni1']]
         if not trace:
@@ -319,7 +322,7 @@ class CartoPoint(EPPoint):
                                 )
                            ]
         else:
-            self.egmUni = [trace[0]]
+            self.egmUni = [trace[0]]  # in case of duplicate channel names
 
         trace = [t for t in egm_data if t.name == egm_names['uni2']]
         if not trace:
@@ -337,9 +340,14 @@ class CartoPoint(EPPoint):
         if not trace:
             log.warning('no reference EGM data (channel: {}) found for point {}'
                         .format(egm_names['bip'], self.name))
-            self.egmRef = np.full(num_samples, [np.nan])
+            self.egmRef = [Trace(
+                name=egm_names['ref'],
+                data=np.full(num_samples, [np.nan]),
+                fs=1000.0
+            )
+            ]
         else:
-            self.egmRef = trace[0]
+            self.egmRef = trace
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
