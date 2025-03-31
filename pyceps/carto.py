@@ -101,13 +101,13 @@ class CartoPoint(EPPoint):
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
             peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
-            unipolar EGm trace(s). If supported by the mapping system,
+        egmBip : List of Trace
+            bipolar EGM trace(s)
+        egmUni : List of Trace
+            unipolar EGM trace(s). If supported by the mapping system,
             two unipolar traces are stored
-        egmRef : Trace
-            reference trace
+        egmRef : List of Trace
+            reference trace(s)
         impedance : float
         force : float
         barDirection : ndarray (3, 1)
@@ -116,7 +116,7 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, )
+        uniX : ndarray (3, 1)
             cartesian coordinates of the second unipolar recording electrode
             NOTE: coordinates of second unipolar electrode are same as recX if
             position cannot be determined

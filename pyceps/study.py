@@ -74,17 +74,19 @@ class EPPoint:
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
             peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
+        egmBip : List of Trace
+            bipolar EGM trace(s)
+        egmUni : List of Trace
             unipolar EGm trace(s). If supported by the mapping system,
-            two unipolar traces are stored
-        uniX : ndarray (3, )
-            cartesian coordinates of the second unipolar recording electrode
+            two or more unipolar traces are stored
+        uniX : ndarray (3, n)
+            cartesian coordinates of the unipolar recording electrode(s)
+            2nd dimension is number of egmUni trace(s) - 1 because
+            coordinates of first channel is recX
             NOTE: coordinates of second unipolar electrode are same as recX if
             position cannot be determined
-        egmRef : Trace
-            reference trace
+        egmRef : List of Trace
+            reference trace(s)
         ecg : list of Trace
             ecg traces for this point
         impedance : float
@@ -137,11 +139,11 @@ class EPPoint:
         self.bipVoltage = np.nan
 
         # signal traces
-        self.egmBip = None
-        self.egmUni = None
-        self.egmRef = None
+        self.egmBip = []
+        self.egmUni = []
+        self.egmRef = []
         self.ecg = []
-        self.uniX = np.full(3, np.nan, dtype=np.float32)
+        self.uniX = np.full((3, 1), np.nan, dtype=np.float32)
 
         self.impedance = np.nan
         self.force = np.nan
