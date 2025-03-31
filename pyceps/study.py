@@ -797,32 +797,69 @@ class EPMap:
         # save data channel-wise
         for channel in which:
             if channel.upper() == 'BIP':
-                channel_data['BIP.pc'] = (
-                    np.asarray([x.egmBip.data for x in points])
-                )
+                num_traces = max([x.get_num_bip() for x in points])
+                for n in range(num_traces):
+                    name = 'BIP{}.pc'.format(n+1 if n>0 else '')
+                    channel_data[name] = (
+                        np.asarray([x.egmBip[n].data for x in points])
+                    )
+                # channel_data['BIP.pc'] = (
+                #     np.asarray([x.egmBip.data for x in points])
+                # )
 
             elif channel.upper() == 'UNI':
-                channel_data['UNI.pc'] = (
-                    np.asarray([x.egmUni[0].data for x in points])
-                )
-                channel_data['UNI2.upc'] = (
-                    np.asarray([x.egmUni[1].data for x in points])
-                )
-                # export 2nd unipolar point cloud
-                uni2_points = np.array([point.uniX for point in points])
-                # adjust ndarray dimensions
-                if uni2_points.ndim == 3:
-                    uni2_points = np.squeeze(uni2_points, axis=2)
-                pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
-                log.info('exporting mapping points cloud to {}'
-                         .format(pts_file)
-                         )
-                writer.dump(pts_file, uni2_points)
+                num_traces = max([x.get_num_uni() for x in points])
+                for n in range(num_traces):
+                    name = 'UNI{}.{}pc'.format(
+                        n + 1 if n > 0 else '', 'u' if n > 0 else ''
+                    )
+                    channel_data[name] = (
+                        np.asarray([x.egmUni[n].data for x in points])
+                    )
+
+                    # export additional point clouds
+                    if n > 0:
+                        uni_points = np.array(
+                            [point.uniX[:, n-1] for point in points]
+                        )
+                        # adjust ndarray dimensions
+                        if uni_points.ndim == 3:
+                            uni_points = np.squeeze(uni_points, axis=2)
+                        pts_file = '{}.egm.UNI{}.upc.pts'.format(
+                            basename, n+1
+                        )
+                        log.info('exporting mapping points cloud to {}'
+                                 .format(pts_file)
+                                 )
+                        writer.dump(pts_file, uni_points)
+
+                # channel_data['UNI.pc'] = (
+                #     np.asarray([x.egmUni[0].data for x in points])
+                # )
+                # channel_data['UNI2.upc'] = (
+                #     np.asarray([x.egmUni[1].data for x in points])
+                # )
+                # # export 2nd unipolar point cloud
+                # uni2_points = np.array([point.uniX for point in points])
+                # # adjust ndarray dimensions
+                # if uni2_points.ndim == 3:
+                #     uni2_points = np.squeeze(uni2_points, axis=2)
+                # pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
+                # log.info('exporting mapping points cloud to {}'
+                #          .format(pts_file)
+                #          )
+                # writer.dump(pts_file, uni2_points)
 
             elif channel.upper() == 'REF':
-                channel_data['REF.pc'] = (
-                    np.asarray([x.egmRef.data for x in points])
-                )
+                num_traces = max([x.get_num_ref() for x in points])
+                for n in range(num_traces):
+                    name = 'REF{}.pc'.format(n + 1 if n > 0 else '')
+                    channel_data[name] = (
+                        np.asarray([x.egmRef[n].data for x in points])
+                    )
+                # channel_data['REF.pc'] = (
+                #     np.asarray([x.egmRef.data for x in points])
+                # )
 
         # save data to igb
         # Note: this file cannot be loaded with the CARTO mesh but rather
