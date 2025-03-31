@@ -156,6 +156,18 @@ class EPPoint:
         """Check if this point is valid."""
         raise NotImplementedError
 
+    def get_num_bip(self) -> int:
+        """Return number of bipolar EGM traces."""
+        return len(self.egmBip)
+
+    def get_num_uni(self) -> int:
+        """Return number of unipolar EGM traces."""
+        return len(self.egmUni)
+
+    def get_num_ref(self) -> int:
+        """Return number of bipolar EGM traces."""
+        return len(self.egmRef)
+
     def load_ecg(
             self,
             channel_names: Optional[Union[str, List[str]]] = None,
