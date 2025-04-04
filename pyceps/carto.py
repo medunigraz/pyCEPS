@@ -117,8 +117,8 @@ class CartoPoint(EPPoint):
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
         uniX : ndarray (3, 1)
-            cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are same as recX if
+            cartesian coordinates of the unipolar recording electrode(s)
+            NOTE: coordinates of unipolar electrode are same as recX if
             position cannot be determined
         forceFile : str
             name of the points contact force file
@@ -275,16 +275,15 @@ class CartoPoint(EPPoint):
         egm_names = self._channel_names_from_ecg_header(ecg_file_header)
 
         # get coordinates of second unipolar channel
-        self.uniX[:, 0] = self._get_2nd_uni_x(
-            encoding=self.parent.parent.encoding
-        )
-
         if egm_names_from_pos:
             egm_names, uniCoordinates = self._channel_names_from_pos_file(
                 egm_names,
                 encoding=self.parent.parent.encoding
             )
-            self.uniX[:, 0] = uniCoordinates
+        else:
+            uniCoordinates = self._get_2nd_uni_x(
+                encoding=self.parent.parent.encoding
+            )
 
         # now we can import the electrograms for this point
         egm_data = self.load_ecg([egm_names['bip'],
@@ -323,6 +322,8 @@ class CartoPoint(EPPoint):
                            ]
         else:
             self.egmUni = [trace[0]]  # in case of duplicate channel names
+        # add uni coordinates
+        self.uniX = self.recX
 
         trace = [t for t in egm_data if t.name == egm_names['uni2']]
         if not trace:
@@ -335,6 +336,8 @@ class CartoPoint(EPPoint):
                                )
         else:
             self.egmUni.append(trace[0])
+        # add uni coordinates
+        self.uniX = np.vstack([self.uniX, uniCoordinates]).T
 
         trace = [t for t in egm_data if t.name == egm_names['ref']]
         if not trace:
@@ -2826,6 +2829,10 @@ class CartoStudy(EPStudy):
                                         'for CartoPoint'
                                         .format(key)
                                         )
+                    # adjust uniX coordinates for version <= 1.05
+                    if new_point.uniX.size == 3:
+                        new_point.uniX = np.vstack([new_point.recX,
+                                                    new_point.uniX]).T
                     points.append(new_point)
                 new_map.points = points
 
