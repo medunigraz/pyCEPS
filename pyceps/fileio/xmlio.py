@@ -37,6 +37,7 @@ def xml_add_binary_numpy(
         type : np.dtype extracted from data
         name : name of the DataArray
         numberOfComponents : dimension of data along axis=1
+        dimension : dimension of data along axis=2, -1 for 1D and 2D arrays
         format : always "binary"
 
         Example:
@@ -68,11 +69,17 @@ def xml_add_binary_numpy(
     except IndexError:
         numComponents = '1'
 
+    try:
+        dimension = str(data.shape[2])
+    except IndexError:
+        dimension = '-1'
+
     # create Element
     element = ET.SubElement(root, 'DataArray',
                             type=data.dtype.str,
                             name=name,
                             numberOfComponents=numComponents,
+                            dimension=dimension,
                             format='binary',
                             )
     # add data
@@ -242,9 +249,16 @@ def xml_load_binary_data(
         # no data found, nothing to decode
         return name, xml_data
     num_components = int(element.get('numberOfComponents'))
+    dimension = element.get('dimension')
+    if dimension:
+        dimension = int(dimension)
+    else:
+        dimension = -1
 
     data = np.frombuffer(base64.b64decode(xml_data), data_type)
-    if num_components > 1:
+    if dimension > 0:
+        data = data.reshape(-1, num_components, dimension)
+    elif num_components > 1:
         data = data.reshape(-1, num_components)
 
     return name, data
