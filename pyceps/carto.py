@@ -2944,7 +2944,7 @@ class CartoStudy(EPStudy):
 
             # add additional point info
             point_item = map_item.find('Points')
-            to_add = ['pointFile', 'ecgFile', 'forceFile', 'uniX']
+            to_add = ['pointFile', 'ecgFile', 'forceFile']
             for name in to_add:
                 data = [getattr(p, name) for p in cmap.points]
                 xml_add_binary_numpy(point_item, name, np.array(data))
