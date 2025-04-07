@@ -19,6 +19,7 @@
 import logging
 from typing import IO, List
 import numpy as np
+import pandas as pd
 import xml.etree.ElementTree as ET
 import re
 
