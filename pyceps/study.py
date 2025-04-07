@@ -81,9 +81,7 @@ class EPPoint:
             two or more unipolar traces are stored
         uniX : ndarray (3, n)
             cartesian coordinates of the unipolar recording electrode(s)
-            2nd dimension is number of egmUni trace(s) - 1 because
-            coordinates of first channel is recX
-            NOTE: coordinates of second unipolar electrode are same as recX if
+            NOTE: coordinates of unipolar electrode are same as recX if
             position cannot be determined
         egmRef : List of Trace
             reference trace(s)
@@ -803,52 +801,29 @@ class EPMap:
                     channel_data[name] = (
                         np.asarray([x.egmBip[n].data for x in points])
                     )
-                # channel_data['BIP.pc'] = (
-                #     np.asarray([x.egmBip.data for x in points])
-                # )
 
             elif channel.upper() == 'UNI':
                 num_traces = max([x.get_num_uni() for x in points])
                 for n in range(num_traces):
-                    name = 'UNI{}.{}pc'.format(
-                        n + 1 if n > 0 else '', 'u' if n > 0 else ''
-                    )
+                    name = 'UNI{}.upc'.format(n + 1 if n > 0 else '')
                     channel_data[name] = (
                         np.asarray([x.egmUni[n].data for x in points])
                     )
 
                     # export additional point clouds
-                    if n > 0:
-                        uni_points = np.array(
-                            [point.uniX[:, n-1] for point in points]
-                        )
-                        # adjust ndarray dimensions
-                        if uni_points.ndim == 3:
-                            uni_points = np.squeeze(uni_points, axis=2)
-                        pts_file = '{}.egm.UNI{}.upc.pts'.format(
-                            basename, n+1
-                        )
-                        log.info('exporting mapping points cloud to {}'
-                                 .format(pts_file)
-                                 )
-                        writer.dump(pts_file, uni_points)
-
-                # channel_data['UNI.pc'] = (
-                #     np.asarray([x.egmUni[0].data for x in points])
-                # )
-                # channel_data['UNI2.upc'] = (
-                #     np.asarray([x.egmUni[1].data for x in points])
-                # )
-                # # export 2nd unipolar point cloud
-                # uni2_points = np.array([point.uniX for point in points])
-                # # adjust ndarray dimensions
-                # if uni2_points.ndim == 3:
-                #     uni2_points = np.squeeze(uni2_points, axis=2)
-                # pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
-                # log.info('exporting mapping points cloud to {}'
-                #          .format(pts_file)
-                #          )
-                # writer.dump(pts_file, uni2_points)
+                    uni_points = np.array(
+                        [point.uniX[:, n] for point in points]
+                    )
+                    # adjust ndarray dimensions
+                    if uni_points.ndim == 3:
+                        uni_points = np.squeeze(uni_points, axis=2)
+                    pts_file = '{}.egm.UNI{}.upc.pts'.format(
+                        basename, n + 1 if n > 0 else ''
+                    )
+                    log.info('exporting mapping points cloud to {}'
+                             .format(pts_file)
+                             )
+                    writer.dump(pts_file, uni_points)
 
             elif channel.upper() == 'REF':
                 num_traces = max([x.get_num_ref() for x in points])
@@ -857,9 +832,6 @@ class EPMap:
                     channel_data[name] = (
                         np.asarray([x.egmRef[n].data for x in points])
                     )
-                # channel_data['REF.pc'] = (
-                #     np.asarray([x.egmRef.data for x in points])
-                # )
 
         # save data to igb
         # Note: this file cannot be loaded with the CARTO mesh but rather
