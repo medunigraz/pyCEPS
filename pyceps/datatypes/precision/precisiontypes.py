@@ -17,7 +17,8 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import namedtuple
-
+from dataclasses import dataclass
+import numpy as np
 
 RepositoryInfo = namedtuple('RepositoryInfo',
                             ['studyName',
@@ -95,6 +96,59 @@ Fields:
     version : str
         file version of data files
 """
+
+@dataclass
+class PrecisionXFileHeader:
+    """Class for header information contained in PrecisionX CSV files.
+
+    Parameters:
+        version : str
+        studyName : str
+        mapName : str
+        dataOffset : int
+        numPoints : int
+        waveName : str
+            only for Wave files
+        fs : float
+            only for Wave files
+        numSamples : int
+            only for Wave files
+    """
+    version: str = ''
+    studyName: str = ''
+    mapName: str = ''
+    mapType : str = ''
+    dataOffset: int = -1
+    numPoints: int = -1
+    waveName: str = ''
+    fs: float = 0.0
+    numSamples: int = -1
+
+
+@dataclass
+class PrecisionXWaveData:
+    """ Class for wave data contained in PrecisionX CSV files.
+
+    Parameters:
+        name : str
+            name of the wave
+        pointNumber : ndarray of int
+        freezeGroup : ndarray of int
+        traceName: ndarray of str
+            name of the trace, i.e. the channel names
+        fs : float
+            sampling rate
+        data : ndarray
+    """
+    name: str = ''
+    pointNumber: np.ndarray = np.array([], dtype=np.int32)
+    freezeGroup: np.ndarray = np.array([], dtype=np.int32)
+    traceName: np.ndarray = np.array([], dtype=str)
+    fs: float = 0.0
+    data: np.ndarray = np.array([], dtype=np.single)
+
+    def is_valid(self):
+        return self.data.size != 0
 
 
 PrecisionSurfaceLabel = namedtuple('PrecisionSurfaceLabel',
