@@ -1071,6 +1071,51 @@ class PrecisionMapX(EPMap):
 
         return []
 
+    def export_point_egm(
+            self,
+            output_folder: str = '',
+            which: Optional[Union[str, List[str]]] = None,
+            points: Optional[List[EPPoint]] = None
+    ) -> None:
+        """
+        Export mapping EGM traces in IGB format.
+
+        A .txt file is created to reproduce the order in which wave data is
+        exported, i.e. which type of wave data (across, along,...) is
+        associated with *.UNI.*, *.UNI2.* etc.
+
+        Parameters:
+            output_folder : str (optional)
+                path of the exported files
+            which : string or list of strings (optional)
+                EGM trace(s) to include in IGB file. Options are 'BIP', 'UNI',
+                'REF'. If not specified, all are exported.
+           points : list of CartoPoints (optional)
+                EGM points to export. If not specified, data from all valid
+                points in WOI is exported.
+
+        Returns:
+            None
+        """
+
+        super().export_point_egm(output_folder=output_folder,
+                                 which=which,
+                                 points=points
+                                 )
+
+        log.info('exporting additional point EGM data')
+
+        output_folder = self.resolve_export_folder(output_folder)
+        basename = os.path.join(output_folder, self.name)
+        filename = '{}.egm.waveOrder.txt'.format(basename)
+        txt_string = 'UNI:\n'
+        txt_string += '\n'.join(self.egmUniType)
+        txt_string += '\nBIP:\n'
+        txt_string += '\n'.join(self.egmBipType)
+
+        with open(filename, 'w') as fid:
+            fid.write(txt_string)
+
     def export_point_info(
             self,
             output_folder: str = '',
