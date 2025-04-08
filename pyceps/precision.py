@@ -85,16 +85,16 @@ class PrecisionPoint(EPPoint):
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
             peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
+        egmBip : List of Trace
+            bipolar EGM trace(s)
+        egmUni : List of Trace
             unipolar EGm trace(s). If supported by the mapping system,
             two unipolar traces are stored
-        uniX : ndarray (3, )
-            cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are same as recX if
+        uniX : ndarray (3, n)
+            cartesian coordinates of the second recording electrode(s)
+            NOTE: coordinates of second electrode are same as recX if
             position cannot be determined
-        egmRef : Trace
+        egmRef : List of Trace
             reference trace
         ecg : list of Trace
             ecg traces for this point
@@ -444,24 +444,32 @@ class PrecisionMap(EPMap):
                 point.refAnnotation = ref_annotation * header.sampleRate
                 point.latAnnotation = lat_annotation * header.sampleRate
                 point.bipVoltage = float(point_data['peak2peak'][i])
-                point.egmBip = Trace(name=ecg_data['rov']['names'][i],
-                                     data=ecg_data['rov']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
+                point.egmBip = [
+                    Trace(name=ecg_data['rov']['names'][i],
+                          data=ecg_data['rov']['values'][:, i],
+                          fs=header.sampleRate
+                          )
+                ]
                 # TODO: get unipolar recordings for Precision
                 uni_names = ecg_data['rov']['names'][i].split()[-1].split('-')
                 point.egmUni = [
                     Trace(name=uni_names[0],
-                          data=np.full(point.egmBip.data.shape, np.nan),
+                          data=np.full(point.egmBip[0].data.shape, np.nan),
                           fs=header.sampleRate),
                     Trace(name=uni_names[1],
-                          data=np.full(point.egmBip.data.shape, np.nan),
+                          data=np.full(point.egmBip[0].data.shape, np.nan),
                           fs=header.sampleRate)
                 ]
-                point.egmRef = Trace(name=ecg_data['ref']['names'][i],
-                                     data=ecg_data['ref']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
+                # TODO: get unipolar coordinates
+                point.uniX = point.recX
+                point.uniX = np.vstack([point.uniX, point.recX]).T
+
+                point.egmRef = [
+                    Trace(name=ecg_data['ref']['names'][i],
+                          data=ecg_data['ref']['values'][:, i],
+                          fs=header.sampleRate
+                          )
+                ]
 
                 # add Precision-specific attributes
                 point.utilized = bool(int(point_data['utilized'][i]))
