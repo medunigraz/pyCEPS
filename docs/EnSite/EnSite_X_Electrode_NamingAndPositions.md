@@ -1,6 +1,7 @@
 # EnSite X
 
 ## Electrode Naming Convention
+
 EnSiteX uses 3 electrodes to create mapping points: Corner, Along, and Across.
 The names of electrodes that make up a point are given in the dataset. Naming
 convention is as follows:
@@ -8,11 +9,13 @@ convention is as follows:
 <img src="EnSiteX_ElectrodeNames.png" alt="naming convention" width="150">
 
 ## Electrode Positions and Signals
+
 For each point the coordinates of the 3 electrodes are given. The actual
 position of the recording point (recX in EPPoint) is a point on the plane
 spanned by the electrodes.
 These coordinates are given in the dataset as "roving_x/y/z".
 The EGM signals are related to point clouds as follows:
+
 - bipolar and roving traces &#8594; <map_name>.pc.pts
 - unipolar traces &#8594; <map_name>.egm.UNI{*}.upc.pts
 
