@@ -1986,6 +1986,10 @@ class PrecisionStudy(EPStudy):
                     version=version,
                     parent=study
                 )
+                egmUniType = proc.get('egmUniType')
+                new_map.egmUniType = egmUniType.split(',')
+                egmBipType = proc.get('egmBipType')
+                new_map.egmBipType = egmBipType.split(',')
             else:
                 raise ValueError('cannot import Precision version {}'
                                  .format(version)
@@ -2101,6 +2105,9 @@ class PrecisionStudy(EPStudy):
             map_item.set('surfaceFilePath', cmap.surfaceFilePath)
             map_item.set('dataLocation', cmap.dataLocation)
             map_item.set('version', cmap.version)
+            if isinstance(cmap, PrecisionMapX):
+                map_item.set('egmUniType', ','.join(cmap.egmUniType))
+                map_item.set('egmBipType', ','.join(cmap.egmBipType))
 
             # add additional point info
             point_item = map_item.find('Points')
