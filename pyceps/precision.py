@@ -701,6 +701,12 @@ class PrecisionMapX(EPMap):
                 ablation data for this mapping procedure
             ablationSites = list of PrecisionLesion
                 ablation data imported from study
+            egmUniType : list of str
+                order in which unipolar signals are stored. Type can be
+                'along', 'across' or 'corner'
+            egmBipType : list of str
+                order in which bipolar signals are stored. Type can be
+                'rov, 'along' or 'across'
             version : str
                 version number
     """
@@ -751,6 +757,9 @@ class PrecisionMapX(EPMap):
         self.surfaceFilePath = surface_file_path
         self.dataLocation = data_location
         self.ablationSites = []
+
+        self.egmUniType = []
+        self.egmBipType = []
 
         self.version = version
 
@@ -863,6 +872,17 @@ class PrecisionMapX(EPMap):
                 wd = load_x_wave_data(fid, encoding=self.parent.encoding)
                 if wd.is_valid():
                     wave_data.append(wd)
+
+        # add order of wave data to map
+        wave_names = [w.name for w in wave_data]
+        log.debug('adding order of wave data to map: {}'.format(wave_names))
+        for name in wave_names:
+            if 'uni' in name:
+                self.egmUniType.append(name)
+            elif any(substring in name for substring in ['rov', 'bi']):
+                self.egmBipType.append(name)
+            else:
+                continue
 
         # get sampling rate of waves for later
         fs, count = np.unique([w.fs for w in wave_data], return_counts=True)
