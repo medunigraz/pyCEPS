@@ -101,13 +101,13 @@ class CartoPoint(EPPoint):
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
             peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
-            unipolar EGm trace(s). If supported by the mapping system,
+        egmBip : List of Trace
+            bipolar EGM trace(s)
+        egmUni : List of Trace
+            unipolar EGM trace(s). If supported by the mapping system,
             two unipolar traces are stored
-        egmRef : Trace
-            reference trace
+        egmRef : List of Trace
+            reference trace(s)
         impedance : float
         force : float
         barDirection : ndarray (3, 1)
@@ -116,9 +116,9 @@ class CartoPoint(EPPoint):
             tags assigned to this point, i.e. 'Full_name' in study's TagsTable
         ecgFile : str
             name of the points ECG file <map_name>_<point_name>_ECG_Export.txt
-        uniX : ndarray (3, )
-            cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are same as recX if
+        uniX : ndarray (3, 1)
+            cartesian coordinates of the unipolar recording electrode(s)
+            NOTE: coordinates of unipolar electrode are same as recX if
             position cannot be determined
         forceFile : str
             name of the points contact force file
@@ -275,14 +275,15 @@ class CartoPoint(EPPoint):
         egm_names = self._channel_names_from_ecg_header(ecg_file_header)
 
         # get coordinates of second unipolar channel
-        self.uniX = self._get_2nd_uni_x(encoding=self.parent.parent.encoding)
-
         if egm_names_from_pos:
             egm_names, uniCoordinates = self._channel_names_from_pos_file(
                 egm_names,
                 encoding=self.parent.parent.encoding
             )
-            self.uniX = uniCoordinates
+        else:
+            uniCoordinates = self._get_2nd_uni_x(
+                encoding=self.parent.parent.encoding
+            )
 
         # now we can import the electrograms for this point
         egm_data = self.load_ecg([egm_names['bip'],
@@ -302,12 +303,13 @@ class CartoPoint(EPPoint):
         if not trace:
             log.warning('no bipolar EGM data (channel: {}) found for point {}'
                         .format(egm_names['bip'], self.name))
-            self.egmBip = Trace(name=egm_names['bip'],
+            self.egmBip = [Trace(name=egm_names['bip'],
                                 data=np.full(num_samples, [np.nan]),
                                 fs=1000.0
                                 )
+                           ]
         else:
-            self.egmBip = trace[0]
+            self.egmBip = trace
 
         trace = [t for t in egm_data if t.name == egm_names['uni1']]
         if not trace:
@@ -319,7 +321,9 @@ class CartoPoint(EPPoint):
                                 )
                            ]
         else:
-            self.egmUni = [trace[0]]
+            self.egmUni = [trace[0]]  # in case of duplicate channel names
+        # add uni coordinates
+        self.uniX = self.recX
 
         trace = [t for t in egm_data if t.name == egm_names['uni2']]
         if not trace:
@@ -332,14 +336,21 @@ class CartoPoint(EPPoint):
                                )
         else:
             self.egmUni.append(trace[0])
+        # add uni coordinates
+        self.uniX = np.vstack([self.uniX, uniCoordinates]).T
 
         trace = [t for t in egm_data if t.name == egm_names['ref']]
         if not trace:
             log.warning('no reference EGM data (channel: {}) found for point {}'
                         .format(egm_names['bip'], self.name))
-            self.egmRef = np.full(num_samples, [np.nan])
+            self.egmRef = [Trace(
+                name=egm_names['ref'],
+                data=np.full(num_samples, [np.nan]),
+                fs=1000.0
+            )
+            ]
         else:
-            self.egmRef = trace[0]
+            self.egmRef = trace
 
         # get the closest surface vertex for this point
         if self.parent.surface.has_points():
@@ -2818,6 +2829,10 @@ class CartoStudy(EPStudy):
                                         'for CartoPoint'
                                         .format(key)
                                         )
+                    # adjust uniX coordinates for version <= 1.05
+                    if new_point.uniX.size == 3:
+                        new_point.uniX = np.vstack([new_point.recX,
+                                                    new_point.uniX]).T
                     points.append(new_point)
                 new_map.points = points
 
@@ -2936,7 +2951,7 @@ class CartoStudy(EPStudy):
 
             # add additional point info
             point_item = map_item.find('Points')
-            to_add = ['pointFile', 'ecgFile', 'forceFile', 'uniX']
+            to_add = ['pointFile', 'ecgFile', 'forceFile']
             for name in to_add:
                 data = [getattr(p, name) for p in cmap.points]
                 xml_add_binary_numpy(point_item, name, np.array(data))

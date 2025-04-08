@@ -19,6 +19,7 @@
 import logging
 from typing import IO, List
 import numpy as np
+import pandas as pd
 import xml.etree.ElementTree as ET
 import re
 
@@ -26,7 +27,8 @@ from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
 from pyceps.datatypes.precision.precisiontypes import (
     PrecisionSurfaceLabel,
     dxlDataHeader, CFEDetection,
-    PrecisionLesion
+    PrecisionLesion,
+    PrecisionXFileHeader, PrecisionXWaveData
 )
 from pyceps.datatypes.signals import Trace
 
@@ -34,7 +36,7 @@ from pyceps.datatypes.signals import Trace
 logger = logging.getLogger(__name__)
 
 
-class _CommentedTreeBuilder(ET.TreeBuilder):
+class CommentedTreeBuilder(ET.TreeBuilder):
     """
     XML TreeBuilder that preserves comments.
 
@@ -46,9 +48,8 @@ class _CommentedTreeBuilder(ET.TreeBuilder):
         self.end('!comment')
 
 
-def read_landmark_geo(
+def read_mesh_file(
         fid: IO,
-        encoding: str = 'cp1252'
 ) -> Surface:
     """
     Load Precision Volume.
@@ -62,9 +63,7 @@ def read_landmark_geo(
 
     Parameters:
         fid : file-like
-            file handle to DxLandmarkGeo.xml
-        encoding : str
-            file encoding used to read file
+            file handle to geometry XML
     Raises:
         AttributeError : If file version is not supported
         AttributeError : If more than 1 volumes in file
@@ -87,7 +86,7 @@ def read_landmark_geo(
 
     # build XML tree and get root element
     tree = ET.parse(fid,
-                    parser=ET.XMLParser(target=_CommentedTreeBuilder()))
+                    parser=ET.XMLParser(target=CommentedTreeBuilder()))
     root = tree.getroot()
 
     # check version
@@ -664,3 +663,204 @@ def load_lesion_data(
         )
 
     return lesions
+
+
+def load_x_csv_header(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> PrecisionXFileHeader:
+    """
+    Load header information for PrecisionX CSV files
+
+    Parameters:
+        fid : file-like
+            file handle to lesion CSV
+        encoding : str
+            file encoding used to read file
+
+    Returns:
+        dict
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_x_csv_header'.format(__name__))
+
+    log.debug('reading file header for file  {}'.format(fid.name))
+
+    # read first n lines of header information
+    header = PrecisionXFileHeader()
+    header_str = ''
+    NUM_LINES = 60
+    try:
+        header_str = [next(fid).decode(encoding=encoding)
+                      for _ in range(NUM_LINES)
+                      ]
+        header_str = '\n'.join(header_str)
+    except StopIteration:
+        pass
+
+    # get version info
+    pattern = re.compile(
+        r'(?s).*File Version\s*:\s*(?P<version>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.version = matches.group('version')
+
+    # get study name
+    pattern = re.compile(
+        r'(?s).*Export from Study\s*:\s*(?P<name>[^\r\n]+)',
+        re.MULTILINE)
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.studyName = matches.group('name')
+
+    # get map name
+    pattern = re.compile(
+        r'(?s).*Map name\s*:\s*,(?P<name>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        # map name found, remove escape characters if necessary
+        header.mapName = re.sub('[^A-Za-z0-9]+', '', matches.group('name'))
+
+    # get map type
+    pattern = re.compile(
+        r'(?s).*Map type\s*:\s*,(?P<type>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.mapType = matches.group('type')
+
+    # get header offset
+    pattern = re.compile(
+        r'(?s).*Data starts in row\s*,(?P<offset>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.dataOffset = int(matches.group('offset'))
+
+    # get number of mapping points
+    pattern = re.compile(
+        r'(?s).*#\s*(mapping pts|freeze groups)\s*:\s*,(?P<points>[^,'
+        r']*)\s*[^\r\n]+',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.numPoints = int(matches.group('points'))
+
+    # following is specific for Wave files
+
+    # get wave name
+    pattern = re.compile(
+        r'(?s).*Wave name\s*:\s*,(?P<wavename>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.waveName = matches.group('wavename')
+
+    # get sampling rate
+    pattern = re.compile(
+        r'(?s).*Sample rate\s*:\s*,(?P<fs>[^,]*)\s*[^\r\n]+',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.fs = float(matches.group('fs'))
+
+    # get number of exported samples
+    pattern = re.compile(
+        r'(?s).*Waveform samples exported\s*:\s*,(?P<samples>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.numSamples = int(matches.group('samples'))
+
+    return header
+
+
+def load_x_map_csv(
+        fid: IO,
+        header: PrecisionXFileHeader = None,
+        encoding: str = 'cp1252'
+) -> pd.DataFrame:
+    """
+
+    Parameters:
+        fid:
+        header:
+        encoding:
+
+    Returns:
+        Pandas DataFrame
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_x_map_csv'.format(__name__))
+
+    log.debug('reading map data from file  {}'.format(fid.name))
+
+    if not header:
+        header = load_x_csv_header(fid, encoding=encoding)
+        fid.seek(0)
+
+    data = pd.read_csv(fid,
+                       sep=',',
+                       skiprows=header.dataOffset - 1,
+                       nrows=header.numPoints,
+                       )
+    # remove any leading or trailing whitespaces in column names
+    data = data.rename(columns=lambda x: x.strip())
+
+    return data
+
+
+def load_x_wave_data(
+        fid: IO,
+        header: PrecisionXFileHeader = None,
+        encoding: str = 'cp1252'
+) -> PrecisionXWaveData:
+    """
+
+    Parameters:
+        fid:
+        header:
+        encoding:
+
+    Returns:
+        Pandas DataFrame
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_x_wave_data'.format(__name__))
+
+    log.debug('reading wave data from file  {}'.format(fid.name))
+
+    if not header:
+        header = load_x_csv_header(fid, encoding=encoding)
+        fid.seek(0)
+
+    if header.numSamples == 0:
+        return PrecisionXWaveData()
+
+    data = pd.read_csv(fid,
+                       sep=',',
+                       skiprows=header.dataOffset-1,
+                       nrows=header.numPoints,
+                       index_col=False).T
+
+    return PrecisionXWaveData(
+        name=header.waveName,
+        pointNumber=data.loc['(Point #)'].to_numpy().astype(np.int32),
+        freezeGroup=data.loc['Freeze Grp #'].to_numpy().astype(np.int32),
+        traceName=data.loc['Trace'].to_numpy().astype(str),
+        fs=header.fs,
+        data=data.loc['0':str(header.numSamples-1)].to_numpy().astype(np.single)
+    )
