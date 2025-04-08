@@ -527,7 +527,9 @@ class PaSo:
                               for x in template.get('currentWOI').split()
                               ]
             new.isReference = template.get('isReference') == 'True'
-            _, new.ecg = xml_load_binary_trace(template.find('Traces'))
+            _, traces = xml_load_binary_trace(template.find('Traces'))
+            # flatten list of list
+            new.ecg = [t[0] for t in traces]
 
             templates.append(new)
 
