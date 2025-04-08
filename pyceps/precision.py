@@ -299,18 +299,15 @@ class PrecisionMap(EPMap):
 
         log.info('reading Precision mesh {}'.format(self.surfaceFile))
 
-        major = self.get_version()
-
-        if 5 <= int(major) < 10:
-            # try if DxLandmarkGeo.xml is available
-            geo_file = self.parent.repository.list_dir(
-                self.parent.repository.join(self.dataLocation),
-                regex=r'(.*)Landmark(.*).xml'
-            )
-            # set DxLandmarkGeo.xml as valid surface file
-            if len(geo_file) == 1:
-                self.surfaceFile = geo_file[0]
-                self.surfaceFilePath = self.dataLocation
+        # try if DxLandmarkGeo.xml is available
+        geo_file = self.parent.repository.list_dir(
+            self.parent.repository.join(self.dataLocation),
+            regex=r'(.*)Landmark(.*).xml'
+        )
+        # set DxLandmarkGeo.xml as valid surface file
+        if len(geo_file) == 1:
+            self.surfaceFile = geo_file[0]
+            self.surfaceFilePath = self.dataLocation
 
         mesh_file = self.parent.repository.join(
             self.surfaceFilePath + '/' + self.surfaceFile)
@@ -321,46 +318,6 @@ class PrecisionMap(EPMap):
             return read_mesh_file(fid)
 
     def load_points(
-            self
-    ) -> List[PrecisionPoint]:
-        """
-        Load points for Precision map.
-
-        Returns:
-            list of PrecisionPoint
-        """
-
-        log.info('import EGM points')
-
-        major = self.get_version()
-
-        if 5 <= int(major) < 10:
-            return self.load_points_v5()
-        elif 10 <= int(major):
-            return self.load_points_v10()
-
-    def load_points_v10(
-            self
-    ) -> List[PrecisionPoint]:
-        """
-        Load points for PrecisionX.
-
-        Returns:
-            list of PrecisionPoint
-        """
-
-        points = []
-
-        # get all map CSV
-        filelist = self.parent.repository.list_dir(
-            self.parent.repository.join(self.dataLocation),
-            regex=r'(.*)Map_(.*).csv'
-        )
-
-
-        return points
-
-    def load_points_v5(
             self
     ) -> List[PrecisionPoint]:
         """
