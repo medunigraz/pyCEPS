@@ -203,6 +203,8 @@ class PrecisionMap(EPMap):
                 ablation data for this mapping procedure
             ablationSites = list of PrecisionLesion
                 ablation data imported from study
+            version : str
+                version number
     """
 
     def __init__(
@@ -211,7 +213,7 @@ class PrecisionMap(EPMap):
             surface_file: str,
             surface_file_path: str,
             data_location: str,
-            version: str = '',
+            version: str = '5.2',
             parent: Optional['PrecisionStudy'] = None
     ) -> None:
         """
@@ -227,7 +229,7 @@ class PrecisionMap(EPMap):
             data_location : str
                 path to map data relative to repository root
             version : str
-                file version used in export from the EAM system
+                major version number
             parent : PrecisionStudy (optional)
                 study this map belongs to
 
@@ -247,11 +249,12 @@ class PrecisionMap(EPMap):
         self.parent = parent
 
         # add Precision specific attributes
-        self.version = version  # file version for data files
         self.surfaceFile = surface_file
         self.surfaceFilePath = surface_file_path
         self.dataLocation = data_location
         self.ablationSites = []
+
+        self.version = version
 
     def import_map(
             self,
