@@ -74,17 +74,17 @@ class EPPoint:
             peak-to-peak voltage in unipolar EGM
         bipVoltage : float
             peak-to-peak voltage in bipolar EGM
-        egmBip : Trace
-            bipolar EGM trace
-        egmUni : Trace
+        egmBip : List of Trace
+            bipolar EGM trace(s)
+        egmUni : List of Trace
             unipolar EGm trace(s). If supported by the mapping system,
-            two unipolar traces are stored
-        uniX : ndarray (3, )
-            cartesian coordinates of the second unipolar recording electrode
-            NOTE: coordinates of second unipolar electrode are same as recX if
+            two or more unipolar traces are stored
+        uniX : ndarray (3, n)
+            cartesian coordinates of the unipolar recording electrode(s)
+            NOTE: coordinates of unipolar electrode are same as recX if
             position cannot be determined
-        egmRef : Trace
-            reference trace
+        egmRef : List of Trace
+            reference trace(s)
         ecg : list of Trace
             ecg traces for this point
         impedance : float
@@ -137,11 +137,11 @@ class EPPoint:
         self.bipVoltage = np.nan
 
         # signal traces
-        self.egmBip = None
-        self.egmUni = None
-        self.egmRef = None
+        self.egmBip = []
+        self.egmUni = []
+        self.egmRef = []
         self.ecg = []
-        self.uniX = np.full(3, np.nan, dtype=np.float32)
+        self.uniX = np.full((3, 1), np.nan, dtype=np.float32)
 
         self.impedance = np.nan
         self.force = np.nan
@@ -153,6 +153,18 @@ class EPPoint:
     def is_valid(self) -> bool:
         """Check if this point is valid."""
         raise NotImplementedError
+
+    def get_num_bip(self) -> int:
+        """Return number of bipolar EGM traces."""
+        return len(self.egmBip)
+
+    def get_num_uni(self) -> int:
+        """Return number of unipolar EGM traces."""
+        return len(self.egmUni)
+
+    def get_num_ref(self) -> int:
+        """Return number of bipolar EGM traces."""
+        return len(self.egmRef)
 
     def load_ecg(
             self,
@@ -783,32 +795,43 @@ class EPMap:
         # save data channel-wise
         for channel in which:
             if channel.upper() == 'BIP':
-                channel_data['BIP.pc'] = (
-                    np.asarray([x.egmBip.data for x in points])
-                )
+                num_traces = max([x.get_num_bip() for x in points])
+                for n in range(num_traces):
+                    name = 'BIP{}.pc'.format(n+1 if n>0 else '')
+                    channel_data[name] = (
+                        np.asarray([x.egmBip[n].data for x in points])
+                    )
 
             elif channel.upper() == 'UNI':
-                channel_data['UNI.pc'] = (
-                    np.asarray([x.egmUni[0].data for x in points])
-                )
-                channel_data['UNI2.upc'] = (
-                    np.asarray([x.egmUni[1].data for x in points])
-                )
-                # export 2nd unipolar point cloud
-                uni2_points = np.array([point.uniX for point in points])
-                # adjust ndarray dimensions
-                if uni2_points.ndim == 3:
-                    uni2_points = np.squeeze(uni2_points, axis=2)
-                pts_file = '{}.egm.UNI2.upc.pts'.format(basename)
-                log.info('exporting mapping points cloud to {}'
-                         .format(pts_file)
-                         )
-                writer.dump(pts_file, uni2_points)
+                num_traces = max([x.get_num_uni() for x in points])
+                for n in range(num_traces):
+                    name = 'UNI{}.upc'.format(n + 1 if n > 0 else '')
+                    channel_data[name] = (
+                        np.asarray([x.egmUni[n].data for x in points])
+                    )
+
+                    # export additional point clouds
+                    uni_points = np.array(
+                        [point.uniX[:, n] for point in points]
+                    )
+                    # adjust ndarray dimensions
+                    if uni_points.ndim == 3:
+                        uni_points = np.squeeze(uni_points, axis=2)
+                    pts_file = '{}.egm.UNI{}.upc.pts'.format(
+                        basename, n + 1 if n > 0 else ''
+                    )
+                    log.info('exporting mapping points cloud to {}'
+                             .format(pts_file)
+                             )
+                    writer.dump(pts_file, uni_points)
 
             elif channel.upper() == 'REF':
-                channel_data['REF.pc'] = (
-                    np.asarray([x.egmRef.data for x in points])
-                )
+                num_traces = max([x.get_num_ref() for x in points])
+                for n in range(num_traces):
+                    name = 'REF{}.pc'.format(n + 1 if n > 0 else '')
+                    channel_data[name] = (
+                        np.asarray([x.egmRef[n].data for x in points])
+                    )
 
         # save data to igb
         # Note: this file cannot be loaded with the CARTO mesh but rather

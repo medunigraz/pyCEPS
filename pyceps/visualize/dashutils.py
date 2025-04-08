@@ -197,39 +197,40 @@ def get_point_egm_figure(point, bgnd='rgb(255, 255, 255)'):
 
     # add bipolar trace
     if point.egmBip:
-        n_samples = len(point.egmBip.data)
-        fs = point.egmBip.fs
-        t = np.linspace(0, n_samples / fs, num=n_samples, endpoint=True)
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=point.egmBip.data,
-                mode='lines',
-                name=point.egmBip.name
-            ),
-            row=1, col=1
-        )
-        # mark annotation times
-        # if point.refAnnotation:
-        #     fig.add_vline(
-        #         x=point.refAnnotation / fs,
-        #         annotation_text='REF',
-        #         annotation_position='bottom',
-        #         line_width=1.5,
-        #         line_dash='dot',
-        #         line_color='black',
-        #         row=1, col=1,
-        #     )
-        if point.latAnnotation:
-            fig.add_vline(
-                x=point.latAnnotation / fs,
-                annotation_text='LAT',
-                annotation_position='top left',
-                line_width=1.5,
-                line_dash='dot',
-                line_color='green',
-                row=1, col=1,
+        for trace in point.egmBip:
+            n_samples = len(trace.data)
+            fs = trace.fs
+            t = np.linspace(0, n_samples / fs, num=n_samples, endpoint=True)
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=trace.data,
+                    mode='lines',
+                    name=trace.name
+                ),
+                row=1, col=1
             )
+            # mark annotation times
+            # if point.refAnnotation:
+            #     fig.add_vline(
+            #         x=point.refAnnotation / fs,
+            #         annotation_text='REF',
+            #         annotation_position='bottom',
+            #         line_width=1.5,
+            #         line_dash='dot',
+            #         line_color='black',
+            #         row=1, col=1,
+            #     )
+            if point.latAnnotation:
+                fig.add_vline(
+                    x=point.latAnnotation / fs,
+                    annotation_text='LAT',
+                    annotation_position='top left',
+                    line_width=1.5,
+                    line_dash='dot',
+                    line_color='green',
+                    row=1, col=1,
+                )
 
     # add unipolar trace
     if point.egmUni:
@@ -270,29 +271,30 @@ def get_point_egm_figure(point, bgnd='rgb(255, 255, 255)'):
 
     # add reference trace
     if point.egmRef:
-        n_samples = len(point.egmRef.data)
-        fs = point.egmRef.fs
-        t = np.linspace(0, n_samples / fs, num=n_samples, endpoint=True)
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=point.egmRef.data,
-                mode='lines',
-                name=point.egmRef.name
-            ),
-            row=3, col=1
-        )
-        # mark annotation times
-        if point.refAnnotation:
-            fig.add_vline(
-                x=point.refAnnotation / fs,
-                annotation_text='REF',
-                annotation_position='bottom right',
-                line_width=1.5,
-                line_dash='dot',
-                line_color='black',
-                row=3, col=1,
+        for trace in point.egmRef:
+            n_samples = len(trace.data)
+            fs = trace.fs
+            t = np.linspace(0, n_samples / fs, num=n_samples, endpoint=True)
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=trace.data,
+                    mode='lines',
+                    name=trace.name
+                ),
+                row=3, col=1
             )
+            # mark annotation times
+            if point.refAnnotation:
+                fig.add_vline(
+                    x=point.refAnnotation / fs,
+                    annotation_text='REF',
+                    annotation_position='bottom right',
+                    line_width=1.5,
+                    line_dash='dot',
+                    line_color='black',
+                    row=3, col=1,
+                )
 
     # update x-axis properties
     fig.update_xaxes(title_text='Time (s)', row=3, col=1)
