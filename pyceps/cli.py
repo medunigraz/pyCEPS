@@ -622,6 +622,12 @@ def run():
 
     # initialize logger and set downstream logger to same logging level
     log_fid, log_path = configure_logger(cl_args.logger_level)
+    logger.info(
+        'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
+        'This program comes with ABSOLUTELY NO WARRANTY;\n'
+        'This is free software, and you are welcome to redistribute '
+        'it under certain conditions; see LICENSE.txt for details.\n'
+    )
 
     # check if quick inspection is requested, this will skip the rest
     if cl_args.quick:
@@ -671,10 +677,4 @@ def run():
 
 
 if __name__ == '__main__':
-    print(
-        'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
-        'This program comes with ABSOLUTELY NO WARRANTY;\n'
-        'This is free software, and you are welcome to redistribute '
-        'it under certain conditions; see LICENSE.txt for details.\n'
-    )
     run()
