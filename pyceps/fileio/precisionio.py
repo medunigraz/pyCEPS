@@ -16,482 +16,851 @@
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import logging
-import pickle
-import gzip
+from typing import IO, List
 import numpy as np
+import pandas as pd
+import xml.etree.ElementTree as ET
 import re
 
-from pyceps.datatypes import EPStudy, EPMap, EPPoint
-from pyceps.datatypes.precisiontypes import DetectionAlgorithm
-from pyceps.datatypes.signals import Trace, BodySurfaceECG
-from pyceps.datatypes.lesions import Lesion, RFIndex
-from pyceps.fileio.precisionutils import (read_landmark_geo, load_dxl_data,
-                                          load_ecg_data, load_lesion_data
-                                          )
-from pyceps.exceptions import MeshFileNotFoundError
-from pyceps.utils import console_progressbar
+from pyceps.datatypes.surface import Surface, SurfaceSignalMap, SurfaceLabel
+from pyceps.datatypes.precision.precisiontypes import (
+    PrecisionSurfaceLabel,
+    dxlDataHeader, CFEDetection,
+    PrecisionLesion,
+    PrecisionXFileHeader, PrecisionXWaveData
+)
+from pyceps.datatypes.signals import Trace
 
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-class PrecisionStudy(EPStudy):
+class CommentedTreeBuilder(ET.TreeBuilder):
     """
-    Class representing a Precision study.
+    XML TreeBuilder that preserves comments.
+
+    Comments are added to the tree as '!comment' elements.
     """
-
-    def __init__(self, study_repo, pwd='', encoding='cp1252'):
-        """Constructor."""
-
-        super().__init__(system='precision',
-                         study_repo=study_repo,
-                         pwd=pwd,
-                         encoding=encoding)
-
-        if not os.path.isdir(study_repo):
-            log.warning('Study folder not found!')
-            raise FileNotFoundError
-
-        # Precision study name is the name of export folder
-        self.name = os.path.basename(study_repo)
-        self.studyRoot = study_repo
-
-        self.import_study()
-
-    def import_study(self):
-        """Load study details and basic information."""
-
-        # get map names, i.e. sub-folder names of study root
-        self.mapNames = self._get_immediate_subdir(self.studyRoot)
-        # number of points is undetermined for now...
-        self.mapPoints = [np.nan] * len(self.mapNames)
-
-    def import_maps(self, map_names=None, *args, **kwargs):
-        """
-        Load a Precision map
-
-        Returns:
-            None
-        """
-
-        # do some pre-import checks
-        map_names = super().import_maps()
-
-        # now import maps
-        for map_name in map_names:
-            try:
-                new_map = PrecisionMap(map_name, parent=self)
-                self.maps[map_name] = new_map
-            except Exception as err:
-                log.warning('failed to import map {}: {}'
-                            .format(map_name, err))
-                continue
-
-        return
-
-    def export_additional_meshes(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def is_root_valid(self, root_dir=None):
-        """
-        Check if study root is valid.
-
-        Parameters:
-            root_dir : string (optional)
-                path to check. If not specified, the current study root
-                is checked.
-
-        Returns:
-            bool : valid or not
-        """
-
-        if not root_dir:
-            folder_list = self._get_immediate_subdir(self.studyRoot)
-        else:
-            folder_list = self._get_immediate_subdir(root_dir)
-
-        # check if study root contains folders with same name as maps
-        if not all(n in folder_list for n in self.mapNames):
-            # root saved in study is invalid
-            return False
-
-        # specified root directory is valid
-        return True
-
-    def set_repository(self, root_dir):
-        """
-        Change path to root directory.
-
-        If new root directory is invalid, it is not changed.
-
-        Parameters:
-            root_dir : string
-                new root directory
-
-        Returns:
-            bool : successful or not
-        """
-
-        study_root = os.path.abspath(root_dir)
-        if not self.is_root_valid(study_root):
-            log.warning('root directory is invalid: {}'.format(study_root))
-            return False
-
-        # set proper study root, i.e string or zipfile.Path
-        self.studyRoot = root_dir
-        return True
-
-    @classmethod
-    def load(cls, filename, root=None):
-        """
-        Load pickled version of a study.
-
-        A previously saved pickled version of a CartoStudy object can be
-        loaded. The objects <study_root> is set to the one stored in the
-        PKL file if valid. If not, the folder of the PKL is set as root
-        directory.
-        The path to the Carto files can also be specified explicitly.
-
-        Note that loading to a string with pickle.loads is about 10% faster
-        but probably consumes a lot more memory so we'll skip that for now.
-
-        Parameters:
-            filename : string
-                path to the .PKL or .GZ study file
-            root : string (optional)
-                path to the root directory
-
-        Raises:
-            FileNotFoundError : if pickled file cannot be found
-
-        Returns:
-            CartoStudy object
-        """
-
-        if filename.endswith('.gz'):
-            f = gzip.open(filename, 'rb')
-        else:
-            f = open(filename, 'rb')
-        obj = pickle.load(f)
-        f.close()
-
-        # try to set root if explicitly given
-        if root:
-            if obj.set_repository(os.path.abspath(root)):
-                log.info('setting study root to {}'.format(root))
-                return obj
-            else:
-                log.info('cannot set study root to {}\n'
-                         'Trying to use root information from PKL'
-                         .format(root))
-
-        # check if repository is valid and accessible
-        if obj.is_root_valid():
-            log.info('previous study root is still valid ({})'
-                     .format(obj.studyRoot))
-            obj.set_repository(os.path.abspath(obj.studyRoot))
-            return obj
-
-        # no valid root found so far, set to pkl directory
-        log.warning('no valid study root found. Using .pkl location!'.upper())
-        obj.studyRoot = os.path.abspath(filename)
-
-        return obj
-
-    @staticmethod
-    def _get_immediate_subdir(parent_dir):
-        """Get all directory names in parent folder."""
-
-        return [name for name in os.listdir(parent_dir)
-                if os.path.isdir(os.path.join(parent_dir, name))
-                ]
+    def comment(self, data):
+        self.start('!comment', {})
+        self.data(data)
+        self.end('!comment')
 
 
-class PrecisionMap(EPMap):
+def read_mesh_file(
+        fid: IO,
+) -> Surface:
     """
-    Class representing Precision map.
+    Load Precision Volume.
+
+    Loads surface vertex and triangle data and vertex normals.
+    Adds surface maps to surface:
+        vertex data (P-P voltage, LAT Isochronal, ...)
+    Adds surface labels to surface:
+        vertex status (good, scar, ...)
+        surface of origin (volume ID from ModelGroups.xml)
+
+    Parameters:
+        fid : file-like
+            file handle to geometry XML
+    Raises:
+        AttributeError : If file version is not supported
+        AttributeError : If more than 1 volumes in file
+    Returns:
+        surface : Surface object
     """
 
-    def __init__(self, name, parent=None):
-        """Constructor."""
+    # create child logger
+    log = logging.getLogger('{}.read_landmark_geo'.format(__name__))
 
-        # Note: map name is folder name for now, needs to be extracted from
-        # DxL data files and set later (load_points())!
-        super().__init__(name, parent=parent)
+    log.debug('reading Precision Models from {}'.format(fid.name))
 
-        self.surfaceFile = 'DxLandmarkGeo.xml'
+    # create placeholders for surface map data
+    verts = np.empty((0, 3), dtype=np.single)
+    polys = np.empty((0, 3), dtype=int)
+    norms = np.empty((0, 3), dtype=np.single)
+    map_data = []
+    view_matrix = None
+    labels = []
 
-        # add Precision specific attributes
-        self.rootDir = os.path.join(self.parent.studyRoot, name)
-        self.files = [x for x in os.listdir(self.rootDir)
-                      if os.path.isfile(os.path.join(self.rootDir, x))]
-        self.ablationSites = []
+    # build XML tree and get root element
+    tree = ET.parse(fid,
+                    parser=ET.XMLParser(target=CommentedTreeBuilder()))
+    root = tree.getroot()
 
-        # load data
-        self.surface = self.load_mesh()
-        self.points = self.load_points()
-        # build surface maps
-        self.interpolate_data('act')
-        self.interpolate_data('bip')
-        # self.interpolate_data('uni')
-        self.ecg = self.get_map_ecg()
+    # check version
+    version = root.find('DIFHeader').find('Version').text
+    if not version == 'SJM_DIF_5.0':
+        raise AttributeError('file version {} not supported'.format(version))
 
-    def load_mesh(self, *args, **kwargs):
-        """
-        Load a Precision mesh from file.
+    # check volumes in file
+    volumes = root.find('DIFBody').find('Volumes')
+    if not int(volumes.get('number')) == 1:
+        raise AttributeError('only 1 volume allowed per file')
 
-        Raises:
-            MeshFileNotFoundError
+    # extract volume data
+    volume = volumes.find('Volume')
+    name = volume.get('name')
+    for i, elem in enumerate(volume):
+        if elem.tag == 'Vertices':
+            n_verts = int(elem.get('number'))
+            verts = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=np.single)
+            if not verts.shape[0] == n_verts:
+                log.warning('inconsistency found: number of vertices does not '
+                            'match data!')
 
-        Returns:
-            Surface object
-        """
+        if elem.tag == 'Polygons':
+            n_polys = int(elem.get('number'))
+            polys = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=int)
+            if not polys.shape[0] == n_polys:
+                log.warning('inconsistency found: number of polygons does not '
+                            'match data!')
+            # adjust 1-based indexing
+            polys = polys - 1
 
-        mesh_file = os.path.join(self.rootDir, self.surfaceFile)
-        log.info('reading Precision mesh {}'.format(mesh_file))
+        if elem.tag == 'Normals':
+            n_norms = int(elem.get('number'))
+            norms = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=np.single)
+            if not norms.shape[0] == n_norms:
+                log.warning('inconsistency found: number of normals does not '
+                            'match data!')
 
-        if not os.path.isfile(mesh_file):
-            raise MeshFileNotFoundError(filename=mesh_file)
-
-        return read_landmark_geo(mesh_file)
-
-    def load_points(self, *args, **kwargs):
-        """
-        Load points for Carto3 map.
-
-        Point information is found in "DxL_#.csv" files.
-
-        Returns:
-            points : list of PrecisionPoint objects
-
-        """
-
-        log.info('import EGM points')
-
-        points = []
-
-        # get all DxL files in root folder
-        dxl_regex = re.compile('DxL.*csv')
-        dxl_files = [os.path.join(self.rootDir, f)
-                     for f in self.files if re.match(dxl_regex, f)]
-        dxl_files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
-
-        # work through files and get data
-        point_id = 1
-        for n, file in enumerate(dxl_files):
-            # update progress bar
-            console_progressbar(
-                n + 1, len(dxl_files),
-                suffix='Loading point data from file {}'.format(file)
-            )
-
-            # load file data
-            header, point_data, ecg_data, cfe_data = load_dxl_data(file)
-
-            # check if files are in correct order
-            if not n == header.fileNumber[0] - 1:
-                log.warning('files are not read in consecutive order! '
-                            'Reading file {}, expected file {}!'
-                            .format(header.fileNumber[0], n)
-                            )
-            # check if all files are listed
-            if not header.fileNumber[1] == len(dxl_files):
-                log.warning('not all data files are listed! Expected {} '
-                            'files, but only {} are listed'
-                            .format(header.fileNumber[1], len(dxl_files))
+        if elem.tag == 'Map_data':
+            # the type of map_data is listed in the comment BEFORE
+            comment = volume[i - 1].text
+            if 'Data values at each vertex of DxL map' not in comment:
+                log.warning('unable to fetch type of map data!')
+            data_name = comment.split('Data values at each vertex of DxL map')[
+                1]
+            data_name = data_name.strip().replace(' ', '_')
+            n_data = int(elem.get('number'))
+            values = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=np.single)
+            if not values.shape[0] == n_data:
+                log.warning('inconsistency found: number of data points does '
+                            'not match data!')
+            # build surface signal map
+            map_data.append(SurfaceSignalMap(data_name,
+                                             np.expand_dims(values, axis=1),
+                                             'pointData',
+                                             description='Precision generated '
+                                                         'signal map'
+                                             )
                             )
 
-            # build PrecisionPoints
-            for i in range(header.nPoints):
-                # get coordinates first
-                coordinates = np.array([float(point_data['roving x'][i]),
-                                        float(point_data['roving y'][i]),
-                                        float(point_data['roving z'][i])
-                                        ]
+        if elem.tag == 'Map_status':
+            # map status is listed in the comment BEFORE
+            comment = volume[i - 1].text
+            if 'Map_status for each vertex:' not in comment:
+                log.warning('unable to fetch map status description!')
+            comment = comment.split('Map_status for each vertex:')[1]
+            # work out the value description
+            status_desc = ['value {}: {}'
+                           .format(int(s.split('=')[0].strip()),
+                                   s.split('=')[1].strip())
+                           for s in comment.split(',')
+                           ]
+            n_status = int(elem.get('number'))
+            status = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=np.single)
+            if not status.shape[0] == n_status:
+                log.warning('inconsistency found: number of status points '
+                            'does not match data!')
+            # build surface signal map
+            labels.append(SurfaceLabel('status',
+                                       np.expand_dims(status, axis=1),
+                                       'pointData',
+                                       description='; '.join(status_desc)
                                        )
-                surf_coordinates = np.array([float(point_data['surfPt x'][i]),
-                                             float(point_data['surfPt y'][i]),
-                                             float(point_data['surfPt z'][i])
-                                             ]
-                                            )
+                            )
 
-                # initialize point
-                point = PrecisionPoint(
-                    'P{}'.format(point_id),
-                    coordinates=coordinates,
-                    parent=self
-                )
+        if elem.tag == 'Surface_of_origin':
+            n_origin = int(elem.get('number'))
+            poly_origin = np.genfromtxt(
+                (line for line in elem.text.splitlines()[1:]),
+                dtype=np.single)
+            if not poly_origin.shape[0] == n_origin:
+                log.warning('inconsistency found: number of surface origin '
+                            'points does not match data!')
+            # build surface signal map
+            labels.append(SurfaceLabel('origin',
+                                       np.expand_dims(poly_origin, axis=1),
+                                       'cellData'
+                                       )
+                            )
 
-                # calculate annotation time in (samples) relative to trace
-                # window
-                exported_secs = header.exportedSeconds
-                end_time = float(point_data['end time'][i])
-                ref_lat = float(point_data['ref LAT'][i])
-                egm_lat = float(point_data['rov LAT'][i])
-                ref_annotation = exported_secs - (end_time - ref_lat)
-                lat_annotation = exported_secs - (end_time - egm_lat)
+        if elem.tag == 'AP_MapViewMatrix':
+            view_matrix = [float(x) for x in elem.text.split()]
+            view_matrix = np.reshape(view_matrix, (4, 4), order='F')
 
-                # add base attributes
-                point.prjX = surf_coordinates
-                point.refAnnotation = ref_annotation * header.sampleRate
-                point.latAnnotation = lat_annotation * header.sampleRate
-                point.bipVoltage = float(point_data['peak2peak'][i])
-                point.egmBip = Trace(name=ecg_data['rov']['names'][i],
-                                     data=ecg_data['rov']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
-                point.egmRef = Trace(name=ecg_data['ref']['names'][i],
-                                     data=ecg_data['ref']['values'][:, i],
-                                     fs=header.sampleRate
-                                     )
+    # read labels
+    surf_labels = []
+    for label in root.find('DIFBody').find('Labels').findall('Label'):
+        surf_labels.append(
+            PrecisionSurfaceLabel(
+                label.get('Name'),
+                np.array([float(v) for v in label.text.strip().split()],
+                         dtype=np.single)
+            )
+        )
 
-                # add Precision-specific attributes
-                point.utilized = bool(int(point_data['utilized'][i]))
-                point.displayed = bool(int(point_data['displayed'][i]))
-                point.exportedSeconds = exported_secs
-                point.endTime = end_time
-                point.pNegativeVoltage = float(point_data['peak neg'][i])
-                point.CFEMean = float(point_data['CFE mean'][i])
-                point.CFEstd = float(point_data['CFE stddev'][i])
-                point.CFEDetection = cfe_data[i]
-                point.algorithm = {
-                    'rov': DetectionAlgorithm(
-                        code=point_data['rov detect'][i],
-                        parameter=float(point_data['rov param'][i])),
-                    'ref': DetectionAlgorithm(
-                        code=point_data['ref detect'][i],
-                        parameter=float(point_data['ref param'][i])),
-                }
+    # read ObjectMap
+    obj_map = root.find('DIFBody').find('ObjectMap')
+    rotation = [float(v) for v in obj_map.find('Rotation').text.split()]
+    translation = [float(v) for v in obj_map.find('Rotation').text.split()]
+    scaling = [float(v) for v in obj_map.find('Rotation').text.split()]
 
-                # add point to map
-                points.append(point)
-                point_id += 1
+    # build surface and return
+    return Surface(verts, polys,
+                   vertices_normals=norms,
+                   signal_maps=map_data,
+                   labels=labels
+                   )
 
-        log.info('loaded {} points to map {}'
-                 .format(len(points), self.name)
-                 )
 
-        return points
+def load_dxl_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
+    """
+    Read Precision DxL data file containing point information.
 
-    def import_lesions(self, *args, **kwargs):
-        """
-        Import Precision lesion data.
+    Parameters:
+        fid : file like
+            file handle to DxL file
+        encoding : str
+            file encoding used to read file
 
-        Note: More than one RF index can be stored per ablation site.
+    Raises:
+        IOError : If file not found
+        ValueError : If point data is inconsistent
+        ValueError : If ECG data is inconsistent
 
-        Returns:
-            None
-        """
+    Returns:
+        header : dxlDataHeader
+        point_data : dict
+        ecg_data : dict
+        cfe_data : CFEDetection
+    """
 
-        log.info('loading lesion data for map {}'.format(self.name))
+    # create child logger
+    log = logging.getLogger('{}.load_dxl_data'.format(__name__))
 
-        lesion_file = 'Lesions.csv'
-        if lesion_file not in self.files:
-            log.warning('no lesion data found ({})'.format(lesion_file))
-            return
+    log.debug('reading file {}'.format(fid.name))
 
-        self.ablationSites = load_lesion_data(os.path.join(self.rootDir,
-                                                           lesion_file)
-                                              )
+    # read data at once, files are only ~19MB
+    data = fid.read().decode(encoding=encoding)
 
-        # convert ablation sites data to base class lesions
-        self.lesions = self.ablation_sites_to_lesion()
+    # extract header
+    start_pos = 0
+    end_pos = data.find('Begin data\n', start_pos)
+    header_string = data[start_pos:end_pos]
+    # read header lines at end of data section
+    start_pos = data.find('Seg data len', end_pos)
+    end_pos = data.find('rov trace', start_pos)
+    header_string += data[start_pos:end_pos]
+    # get header information
+    header = parse_dxl_header(header_string)
 
-    def get_map_ecg(self, ecg_names=None, *args, **kwargs):
-        """Get a mean surface ECG trace.
+    # read point data
+    start_pos = data.find('pt number:')
+    end_pos = data.find('Seg data len:', start_pos)
+    point_string = data[start_pos:end_pos]
+    # build data
+    point_data = {}
+    for line in point_string.splitlines():
+        name = line.split(',')[0][:-1]
+        values = line.split(',')[1:]
+        point_data[name] = values
 
-        NOTE: THIS FUNCTION NEEDS A VALID ROOT DIRECTORY TO RETRIEVE DATA!
+    # check if number of points is consistent
+    if not all(len(item) == header.nPoints for item in point_data.values()):
+        raise ValueError('number of data points does not match data!')
 
-        Parameters:
-            ecg_names : list of str
-                ECG names to build. If note specified, 12-lead ECG is used
+    # read electrogram data
+    n_samples = np.ceil(header.sampleRate * header.exportedSeconds)
+    start_pos = data.find('rov trace:', end_pos)
+    end_pos = data.find('FFT spectrum is available for FFT maps only',
+                        start_pos
+                        )
+    ecg_string = data[start_pos:end_pos]
+    ecg_data = parse_dxl_egm_data(ecg_string)
 
-        Returns
-            list of BodySurfaceECG : representative ECG traces
-        """
+    # check if number of points is consistent
+    if not all(ecg_data[d]['values'].shape[0] == n_samples for d in ecg_data):
+        raise ValueError('number of ecg points does not match data!')
 
-        log.info('loading ECGs for map {}'.format(self.name))
+    # read  CFE information
+    start_pos = data.find('CFE detection rov trace:', end_pos)
+    end_pos = data.find('EOF', start_pos)
+    cfe_string = data[start_pos:end_pos]
+    cfe_data = parse_dxl_cfe_data(cfe_string)
 
-        ecg_file = 'ECG_RAW.csv'
-        if ecg_file not in self.files:
-            log.warning('no ECG data found ({})'.format(ecg_file))
-            return []
+    return header, point_data, ecg_data, cfe_data
 
-        if not ecg_names:
-            ecg_names = ['I', 'II', 'III',
-                         'V1', 'V2', 'V3', 'V4', 'V5', 'V6',
-                         'aVL', 'aVR', 'aVF'
-                         ]
-        elif isinstance(ecg_names, str):
-            ecg_names = [ecg_names]
 
-        traces = load_ecg_data(os.path.join(self.rootDir, ecg_file))
+def parse_dxl_header(
+        header_str: str
+) -> dxlDataHeader:
+    """
+    Parse header information of DxL data file
 
-        # check if requested ECG signals were loaded
-        trace_names = [t.name for t in traces]
-        load_names = []
-        for name in ecg_names:
-            if name not in trace_names:
-                log.warning('ECG {} not found in data!'.format(name))
-            else:
-                load_names.append(name)
+    Parameters:
+        header_str : string
 
-        return [BodySurfaceECG(method='recording',
-                               refAnnotation=np.nan,
-                               traces=[t for t in traces
-                                       if t.name in load_names
-                                       ]
-                               )
-                ]
+    Raises:
+        AttributeError: If version is not supported
+        AttributeError: If data element in file is not 'dxl'
 
-    def ablation_sites_to_lesion(self):
-        """Convert ablation sites data to base class lesions."""
+    Returns:
+        info : dxlDataHeader
 
-        lesions = []
-        for site in self.ablationSites:
-            # Precision lesions only have color information, convert to
-            # numeric value as RFI
-            rfi_value = (site.color[0]
-                         + site.color[1] * 256
-                         + site.color[2] * 256**2
+    """
+
+    version = ''
+    data_element = ''
+    n_points = -1
+    map_name = ''
+    file_num = -1
+    n_files = -1
+    seg_data_len = np.nan
+    exported_sec = np.nan
+    sample_rate = np.nan
+    cfe_sens = np.nan
+    cfe_width = np.nan
+    cfe_refractory = np.nan
+
+    for line in header_str.splitlines():
+        if line.startswith('St. Jude Medical. File Revision :'):
+            version = line.split(':')[1].strip()
+            if version not in ['5.2', '5.6']:
+                raise AttributeError('file format {} not supported'
+                                     .format(version))
+
+        if line.startswith('Export Data Element :'):
+            data_element = line.split(':')[1].strip()
+            if not data_element.lower() == 'dxl':
+                raise AttributeError('unexpected data element {}'
+                                     .format(data_element))
+
+        if line.startswith('Total number of data points (columns):'):
+            n_points = int(line.split(',')[1])
+
+        if re.findall(r'This is file \d+ of \d+ for map', line):
+            line, map_name = line.split(',')
+            file_num, n_files = [int(s) for s in re.findall(r'\d+', line)]
+
+        if line.startswith('Seg data len:'):
+            seg_data_len = float(line.split(',')[1])
+
+        if line.startswith('Exported seconds:'):
+            exported_sec = float(line.split(',')[1])
+
+        if line.startswith('Sample rate:'):
+            sample_rate = float(line.split(',')[1])
+
+        if line.startswith('CFE P-P sensitivity (mv)'):
+            cfe_sens = float(line.split(',')[1])
+
+        if line.startswith('CFE Width (ms)'):
+            cfe_width = float(line.split(',')[1])
+
+        if line.startswith('CFE Refractory (ms)'):
+            cfe_refractory = float(line.split(',')[1])
+
+    return dxlDataHeader(version=version,
+                         dataElement=data_element,
+                         nPoints=n_points,
+                         mapName=map_name,
+                         fileNumber=[file_num, n_files],
+                         segmentDataLength=seg_data_len,
+                         exportedSeconds=exported_sec,
+                         sampleRate=sample_rate,
+                         cfeSensitivity=cfe_sens,
+                         cfeWidth=cfe_width,
+                         cfeRefractory=cfe_refractory
                          )
-            rfi = RFIndex(name='precision', value=rfi_value)
-            lesions.append(Lesion(X=site.X,
-                                  diameter=site.diameter,
-                                  RFIndex=[rfi]
-                                  )
-                           )
 
+
+def parse_dxl_egm_data(
+        data_str: str
+) -> dict:
+    """
+    Parse ECG data section in DxL data file.
+
+    Parameters:
+         data_str : string
+
+    Returns:
+        ecg_data : dict of dict
+            keys: rov, ref, spare1, spare2, spare3
+            each ecg dict has keys name (channel that collected the data) and
+            values
+    """
+    # read rov trace
+    start_pos = data_str.find('rov trace:')
+    end_pos = data_str.find('ref trace:', start_pos)
+    rov_string = data_str[start_pos:end_pos]
+    rov_names = rov_string.splitlines()[0].split(',')[1:]
+    rov_data = rov_string.split('\n')[1:-1]
+    rov_data = np.genfromtxt(rov_data, delimiter=',', dtype=np.single)
+
+    # read ref trace
+    start_pos = data_str.find('ref trace:')
+    end_pos = data_str.find('spare1 trace:', start_pos)
+    ref_string = data_str[start_pos:end_pos]
+    ref_names = ref_string.splitlines()[0].split(',')[1:]
+    ref_data = ref_string.split('\n')[1:-1]
+    ref_data = np.genfromtxt(ref_data, delimiter=',', dtype=np.single)
+
+    # read spare trace 1
+    # TODO: spare traces are not always saved (?)
+    start_pos = data_str.find('spare1 trace:')
+    end_pos = data_str.find('spare2 trace:', start_pos)
+    spare_string = data_str[start_pos:end_pos]
+    spare1_names = spare_string.splitlines()[0].split(',')[1:]
+    spare1_data = spare_string.split('\n')[1:-1]
+    spare1_data = np.genfromtxt(spare1_data, delimiter=',', dtype=np.single)
+
+    # read spare trace 2
+    start_pos = data_str.find('spare2 trace:')
+    end_pos = data_str.find('spare3 trace:', start_pos)
+    spare_string = data_str[start_pos:end_pos]
+    spare2_names = spare_string.splitlines()[0].split(',')[1:]
+    spare2_data = spare_string.split('\n')[1:-1]
+    spare2_data = np.genfromtxt(spare2_data, delimiter=',', dtype=np.single)
+
+    # read spare trace 3
+    start_pos = data_str.find('spare3 trace:')
+    end_pos = -1
+    spare_string = data_str[start_pos:end_pos]
+    spare3_names = spare_string.splitlines()[0].split(',')[1:]
+    spare3_data = spare_string.split('\n')[1:]
+    spare3_data = np.genfromtxt(spare3_data, delimiter=',', dtype=np.single)
+
+    return {'rov': {'names': rov_names, 'values': rov_data[:, 1:]},
+            'ref': {'names': ref_names, 'values': ref_data[:, 1:]},
+            'spare1': {'names': spare1_names, 'values': spare1_data[:, 1:]},
+            'spare2': {'names': spare2_names, 'values': spare2_data[:, 1:]},
+            'spare3': {'names': spare3_names, 'values': spare3_data[:, 1:]},
+            }
+
+
+def parse_dxl_cfe_data(
+        cfe_str: str
+) -> List[CFEDetection]:
+    """
+    Parse CFE detection data in DxL data file.
+
+    Parameters:
+        cfe_str : string
+
+    Returns:
+        list of CFEDetection object
+    """
+    # trace for detection
+    start_pos = cfe_str.find('CFE detection rov trace:')
+    end_pos = cfe_str.find('CFE detection count', start_pos)
+    trace_string = cfe_str[start_pos:end_pos]
+    trace = trace_string.split(',')[1:]
+
+    # detection count
+    start_pos = cfe_str.find('CFE detection count')
+    end_pos = cfe_str.find('CFE detection sample index', start_pos)
+    count_string = cfe_str[start_pos:end_pos]
+    count = np.genfromtxt(count_string.split(',')[1:],
+                          delimiter=',',
+                          dtype=int)
+
+    # detection sample index
+    start_pos = cfe_str.find('CFE detection sample index')
+    end_pos = -1
+    sample_string = cfe_str[start_pos:end_pos]
+
+    sample_idx = np.genfromtxt(sample_string.splitlines()[1:],
+                               delimiter=',',
+                               dtype=int)[:, 1:]
+
+    # sanity check
+    if len(trace) != count.shape[0] and len(trace) != sample_idx.shape[1]:
+        print('CFE data is inconsistent, cannot build data!')
+        return []
+
+    # build CFE data
+    cfe_str = []
+    for i, name in enumerate(trace):
+        cfe_str.append(CFEDetection(trace=name,
+                                    count=count[i],
+                                    sampleIndex=sample_idx[:, i]
+                                    )
+                       )
+    return cfe_str
+
+
+def load_ecg_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+):
+    """
+    Load  Precision ECG data.
+
+    Parameters:
+        fid : file-like
+            file handle to ECG CSV
+        encoding : str
+            file encoding used to read file
+
+    Returns:
+        list of Trace objects
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_ecg_data'.format(__name__))
+
+    # read data at once, files are only ~kB
+    data = fid.read().decode(encoding=encoding)
+
+    start_idx = data.find('Number of waves (columns):', 0)
+    end_idx = data.find('\n', start_idx)
+    n_waves = int(data[start_idx:end_idx].strip().split(',')[1])
+
+    start_idx = data.find('Number of samples (rows):', 0)
+    end_idx = data.find('\n', start_idx)
+    n_samples = int(data[start_idx:end_idx].strip().split(',')[1])
+
+    start_idx = end_idx + 1
+    end_idx = data.find('\n', start_idx)
+    ecg_header = data[start_idx:end_idx].strip().split(',')
+
+    start_idx = end_idx + 1
+    end_idx = data.find('EOF', start_idx)
+    ecg_string = data[start_idx:end_idx]
+    ecg_data_raw = np.genfromtxt(ecg_string.splitlines(),
+                                 delimiter=',',
+                                 dtype=str
+                                 )
+    # remove last column, this should be empty
+    if np.all(ecg_data_raw[:, -1] == ''):
+        ecg_data_raw = ecg_data_raw[:, :-1]
+
+    # check data size
+    if ecg_data_raw.shape != (n_samples, n_waves):
+        log.warning('ECG data read from file differs from expected shape!')
+
+    # work out sampling rate
+    t_idx = ecg_header.index('t_ref')
+    t = ecg_data_raw[:, t_idx].astype(float)
+    fs = 1 / np.mean(np.diff(t))
+
+    # build traces
+    names = [n for n in ecg_header]
+    traces = []
+    for i, name in enumerate(names):
+        # convert strings to data
+        if name == 't_dws':
+            data = ecg_data_raw[:, i]
+        elif name.endswith('_ds') or name.endswith('_ps'):
+            data = ecg_data_raw[:, i].astype(int)
+        else:
+            data = ecg_data_raw[:, i].astype(float)
+
+        traces.append(
+            Trace(name=name, data=data, fs=fs)
+        )
+
+    return traces
+
+
+def load_lesion_data(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> List[PrecisionLesion]:
+    """
+    Load Precision lesion data.
+
+    Parameters:
+        fid : file-like
+            file handle to lesion CSV
+        encoding : str
+            file encoding used to read file
+
+    Raises:
+        IOError : If file not found
+
+    Returns:
+        list of PrecisionLesion objects
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_lesion_data'.format(__name__))
+
+    lesions = []
+
+    # read data at once, files are only ~kB
+    data = fid.read().decode(encoding=encoding)
+
+    start_idx = data.find('Number of waves (columns):', 0)
+    end_idx = data.find('\n', start_idx)
+    n_waves = int(data[start_idx:end_idx].strip().split(',')[1])
+
+    start_idx = data.find('Number of samples (rows):', 0)
+    end_idx = data.find('\n', start_idx)
+    n_samples = int(data[start_idx:end_idx].strip().split(',')[1])
+
+    start_idx = end_idx + 1
+    end_idx = data.find('\n', start_idx)
+    lesion_header = data[start_idx:end_idx].strip().split(',')
+
+    start_idx = end_idx + 1
+    end_idx = data.find('EOF', start_idx)
+    lesion_string = data[start_idx:end_idx]
+    lesion_data_raw = np.genfromtxt(lesion_string.splitlines(),
+                                    delimiter=',',
+                                    dtype=str
+                                    )
+
+    # find relevant data
+    DATA_NAMES = ['x', 'y', 'z', 'Diameter',
+                  'Type', 'Surface', 'Display', 'Visible',
+                  'R', 'G', 'B'
+                  ]
+    # check if all data available
+    if not all(n in lesion_header for n in DATA_NAMES):
+        log.warning('could not all necessary lesion data, missing {}!'
+                    .format([n for n in DATA_NAMES if n not in lesion_header]))
         return lesions
 
+    # build lesion objects
+    for i in range(n_samples):
+        lesions.append(PrecisionLesion(
+            X=np.array([float(lesion_data_raw[i, lesion_header.index('xw')]),
+                        float(lesion_data_raw[i, lesion_header.index('yw')]),
+                        float(lesion_data_raw[i, lesion_header.index('zw')]),
+                        ]
+                       ),
+            diameter=float(lesion_data_raw[i, lesion_header.index(
+                'Diameter')]),
+            Type=lesion_data_raw[i, lesion_header.index('Type')],
+            Surface=lesion_data_raw[i, lesion_header.index('Surface')],
+            display=bool(int(lesion_data_raw[i, lesion_header.index(
+                'Display')])),
+            visible=bool(int(lesion_data_raw[i, lesion_header.index(
+                'Visible')])),
+            color=[float(lesion_data_raw[i, lesion_header.index('R')]),
+                   float(lesion_data_raw[i, lesion_header.index('G')]),
+                   float(lesion_data_raw[i, lesion_header.index('B')]),
+                   ]
+            )
+        )
 
-class PrecisionPoint(EPPoint):
+    return lesions
+
+
+def load_x_csv_header(
+        fid: IO,
+        encoding: str = 'cp1252'
+) -> PrecisionXFileHeader:
     """
-    Class representing a Precision mapping point.
+    Load header information for PrecisionX CSV files
+
+    Parameters:
+        fid : file-like
+            file handle to lesion CSV
+        encoding : str
+            file encoding used to read file
+
+    Returns:
+        dict
     """
 
-    def __init__(self, name,
-                 coordinates=np.full((3, 1), np.nan, dtype=float),
-                 parent=None):
-        """Constructor."""
+    # create child logger
+    log = logging.getLogger('{}.load_x_csv_header'.format(__name__))
 
-        super().__init__(name, coordinates=coordinates, parent=parent)
+    log.debug('reading file header for file  {}'.format(fid.name))
 
-        # add Carto3 specific attributes
-        self.catheterName = ''
-        self.electrodeName = ''
+    # read first n lines of header information
+    header = PrecisionXFileHeader()
+    header_str = ''
+    NUM_LINES = 60
+    try:
+        header_str = [next(fid).decode(encoding=encoding)
+                      for _ in range(NUM_LINES)
+                      ]
+        header_str = '\n'.join(header_str)
+    except StopIteration:
+        pass
 
-        self.displayed = False
-        self.utilized = False
-        self.exportedSeconds = np.nan
-        self.endTime = np.nan
-        self.pNegativeVoltage = np.nan
-        self.CFEMean = np.nan
-        self.CFEstd = np.nan
-        self.CFEDetection = None
-        self.algorithm = {}
+    # get version info
+    pattern = re.compile(
+        r'(?s).*File Version\s*:\s*(?P<version>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.version = matches.group('version')
 
-    def is_valid(self):
-        return self.utilized
+    # get study name
+    pattern = re.compile(
+        r'(?s).*Export from Study\s*:\s*(?P<name>[^\r\n]+)',
+        re.MULTILINE)
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.studyName = matches.group('name')
+
+    # get map name
+    pattern = re.compile(
+        r'(?s).*Map name\s*:\s*,(?P<name>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        # map name found, remove escape characters if necessary
+        header.mapName = re.sub('[^A-Za-z0-9]+', '', matches.group('name'))
+
+    # get map type
+    pattern = re.compile(
+        r'(?s).*Map type\s*:\s*,(?P<type>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.mapType = matches.group('type')
+
+    # get header offset
+    pattern = re.compile(
+        r'(?s).*Data starts in row\s*,(?P<offset>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.dataOffset = int(matches.group('offset'))
+
+    # get number of mapping points
+    pattern = re.compile(
+        r'(?s).*#\s*(mapping pts|freeze groups)\s*:\s*,(?P<points>[^,'
+        r']*)\s*[^\r\n]+',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.numPoints = int(matches.group('points'))
+
+    # following is specific for Wave files
+
+    # get wave name
+    pattern = re.compile(
+        r'(?s).*Wave name\s*:\s*,(?P<wavename>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.waveName = matches.group('wavename')
+
+    # get sampling rate
+    pattern = re.compile(
+        r'(?s).*Sample rate\s*:\s*,(?P<fs>[^,]*)\s*[^\r\n]+',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.fs = float(matches.group('fs'))
+
+    # get number of exported samples
+    pattern = re.compile(
+        r'(?s).*Waveform samples exported\s*:\s*,(?P<samples>[^\r\n]+)',
+        re.MULTILINE
+    )
+    matches = pattern.match(header_str)
+    if matches is not None:
+        header.numSamples = int(matches.group('samples'))
+
+    return header
+
+
+def load_x_map_csv(
+        fid: IO,
+        header: PrecisionXFileHeader = None,
+        encoding: str = 'cp1252'
+) -> pd.DataFrame:
+    """
+
+    Parameters:
+        fid:
+        header:
+        encoding:
+
+    Returns:
+        Pandas DataFrame
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_x_map_csv'.format(__name__))
+
+    log.debug('reading map data from file  {}'.format(fid.name))
+
+    if not header:
+        header = load_x_csv_header(fid, encoding=encoding)
+        fid.seek(0)
+
+    data = pd.read_csv(fid,
+                       sep=',',
+                       skiprows=header.dataOffset - 1,
+                       nrows=header.numPoints,
+                       )
+    # remove any leading or trailing whitespaces in column names
+    data = data.rename(columns=lambda x: x.strip())
+
+    return data
+
+
+def load_x_wave_data(
+        fid: IO,
+        header: PrecisionXFileHeader = None,
+        encoding: str = 'cp1252'
+) -> PrecisionXWaveData:
+    """
+
+    Parameters:
+        fid:
+        header:
+        encoding:
+
+    Returns:
+        Pandas DataFrame
+    """
+
+    # create child logger
+    log = logging.getLogger('{}.load_x_wave_data'.format(__name__))
+
+    log.debug('reading wave data from file  {}'.format(fid.name))
+
+    if not header:
+        header = load_x_csv_header(fid, encoding=encoding)
+        fid.seek(0)
+
+    if header.numSamples == 0:
+        return PrecisionXWaveData()
+
+    data = pd.read_csv(fid,
+                       sep=',',
+                       skiprows=header.dataOffset-1,
+                       nrows=header.numPoints,
+                       index_col=False).T
+
+    return PrecisionXWaveData(
+        name=header.waveName,
+        pointNumber=data.loc['(Point #)'].to_numpy().astype(np.int32),
+        freezeGroup=data.loc['Freeze Grp #'].to_numpy().astype(np.int32),
+        traceName=data.loc['Trace'].to_numpy().astype(str),
+        fs=header.fs,
+        data=data.loc['0':str(header.numSamples-1)].to_numpy().astype(np.single)
+    )

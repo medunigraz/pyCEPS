@@ -16,8 +16,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .study import EPStudy, EPMap, EPPoint
-from .surface import Surface, SurfaceSignalMap, Mesh
-from .lesions import Lesion
+from .surface import Surface, SurfaceSignalMap, SurfaceLabel, Mesh
+from .lesions import Lesions
 from .signals import Trace, BodySurfaceECG
 

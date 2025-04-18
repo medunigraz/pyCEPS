@@ -18,14 +18,15 @@
 
 
 import numpy as np
-from dash import Dash, html, no_update
+from dash import Dash, html, no_update, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 
 from .dashlayout import get_layout
 from .dashutils import (to_drop_option, colormaps,
                         find_closest_point,
-                        empty_figure, get_bsecg_figure, get_point_egm_figure,
+                        empty_figure, get_bsecg_figure,
+                        get_point_egm_figure, get_point_ecg_figure,
                         get_colorbar,
                         )
 
@@ -82,21 +83,6 @@ def get_dash_app(study, bgnd=None):
 
     """Handle Controls."""
     @app.callback(
-        Output('surf-ecg-figure', 'figure'),
-        Input('map-selector', 'value'),
-        prevent_initial_call=True,
-    )
-    def update_surface_ecgs(map_name):
-        if not study or not map_name:
-            return empty_figure(bgnd='rgb(255, 255, 255)')
-
-        p_map = [m for m in study.maps.values() if m.name == map_name][0]
-
-        return (empty_figure(bgnd='rgb(255, 255, 255)')
-                if not (len(p_map.ecg) > 0)
-                else get_bsecg_figure(p_map.ecg, COLORS))
-
-    @app.callback(
         Output('surface-poly', 'points'),
         Output('surface-poly', 'polys'),
         Output('mapping-points-poly', 'points', allow_duplicate=True),
@@ -138,9 +124,12 @@ def get_dash_app(study, bgnd=None):
         point_selected = np.full(len(points), 0, dtype=int)
 
         # lesions
-        lesion_location = np.asarray(
-            [lesion.X for lesion in p_map.lesions]
-        ).ravel().tolist()
+        if p_map.lesions is not None:
+            lesion_location = np.asarray(
+                [site.X for site in p_map.lesions.sites]
+            ).ravel().tolist()
+        else:
+            lesion_location = []
 
         # calc center of mass to set camera position right
         cg = p_map.surface.get_center_of_mass()
@@ -157,6 +146,7 @@ def get_dash_app(study, bgnd=None):
 
     @app.callback(
         Output('point-egm-figure', 'figure'),
+        Output('point-ecg', 'value', allow_duplicate=True),
         Input('mapping-points-selected', 'values'),
         State('map-selector', 'value'),
         State('mapping-points-id', 'values'),
@@ -167,7 +157,10 @@ def get_dash_app(study, bgnd=None):
         point_index = np.argwhere(selection)
 
         if not len(point_index) > 0:
-            return empty_figure(bgnd='rgb(255, 255, 255)')
+            return (
+                empty_figure(bgnd='rgb(255, 255, 255)'),  # empty EGm figure
+                False  # set ECG to "Map"
+            )
 
         point_index = point_index.flatten()[0]
 
@@ -176,7 +169,55 @@ def get_dash_app(study, bgnd=None):
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
         point = [p for p in p_map.points if p.name == p_name][0]
 
-        return get_point_egm_figure(point)
+        return (
+            get_point_egm_figure(point),
+            no_update
+        )
+
+    @app.callback(
+        Output('surf-ecg-figure', 'figure'),
+        Input('map-selector', 'value'),
+        Input('mapping-points-selected', 'values'),
+        Input('point-ecg', 'value'),
+        State('mapping-points-id', 'values'),
+        prevent_initial_call=True,
+    )
+    def update_point_ecg_figure(map_name, selection, point_ecg,
+                                point_id):
+
+        if not map_name:
+            return empty_figure(bgnd='rgb(255, 255, 255)')
+
+        p_map = [m for m in study.maps.values() if m.name == map_name][0]
+
+        # find which input triggered callback
+        button_clicked = ctx.triggered_id
+        if button_clicked == 'map-selector':
+            # new map selected or BSECG requested
+            return get_bsecg_figure(p_map.bsecg, COLORS)
+        elif button_clicked == 'point-ecg' and not point_ecg:
+            # ECG view changed to Map ECG
+            return get_bsecg_figure(p_map.bsecg, COLORS)
+        elif button_clicked == 'mapping-points-selected' and not any(selection):
+            # this happens on new map selected, don't know why...?
+            return get_bsecg_figure(p_map.bsecg, COLORS)
+        elif not point_ecg:
+            # new point selected but map ECG is set, no update needed
+            return no_update
+        else:
+            # new point selected and point ECG requested
+            point_index = np.argwhere(selection)
+            if not len(point_index) > 0:
+                return no_update
+
+            point_index = point_index.flatten()[0]
+
+            # update EGM figure
+            p_name = 'P{}'.format(point_id[point_index])
+            p_map = [m for m in study.maps.values() if m.name == map_name][0]
+            point = [p for p in p_map.points if p.name == p_name][0]
+
+            return get_point_ecg_figure(point, COLORS)
 
     @app.callback(
         Output('map-info-button', 'disabled'),
@@ -195,6 +236,8 @@ def get_dash_app(study, bgnd=None):
         Output('lesions-color-by', 'disabled'),
         Output('surface-color-by', 'value'),
         Output('lesions-color-by', 'value'),
+        Output('point-ecg', 'disabled'),
+        Output('point-ecg', 'value'),
         Input('map-selector', 'value'),
         prevent_initial_call=True,
     )
@@ -216,6 +259,8 @@ def get_dash_app(study, bgnd=None):
                     True,   # lesion RFI selector disabled
                     None,   # trigger downstream surface map events
                     None,   # trigger downstream lesion events
+                    True,   # map/point ecg selector disabled
+                    False,  # map/point ecg selector value (Map)
                     )
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
@@ -226,11 +271,20 @@ def get_dash_app(study, bgnd=None):
                      ]
         has_maps = len(surf_maps) > 0
         has_points = len(p_map.points) > 0
-        has_lesions = len(p_map.lesions) > 0
+        has_lesions = (
+                p_map.lesions is not None
+                and len(p_map.lesions.sites) > 0
+        )
+        has_ecg = any([len(p.ecg) > 0 for p in p_map.points])
 
         # get available RF indexes
-        rfi_names = [to_drop_option(name) for name in p_map.get_rfi_names()]
-        has_rfi = len(rfi_names) > 0
+        if has_lesions:
+            rfi_names = [to_drop_option(name)
+                         for name in p_map.lesions.get_rfi_names()]
+            has_rfi = len(rfi_names) > 0
+        else:
+            rfi_names = {}
+            has_rfi = False
 
         return (False,  # map info button enabled
                 not has_maps,       # surface map selection disabled
@@ -248,6 +302,8 @@ def get_dash_app(study, bgnd=None):
                 not has_rfi,        # lesion RFI selector disabled
                 None,               # trigger downstream surface map events
                 None,               # trigger downstream lesion events
+                not has_ecg,        # map/point ecg selector disabled
+                False,              # map/point ecg selector value (Map)
                 )
 
     @app.callback(
@@ -397,16 +453,18 @@ def get_dash_app(study, bgnd=None):
 
     @app.callback(
         Output('mapping-points-rep', 'actor'),
+        Output('point-select', 'disabled'),
         Input('mapping-points-visible', 'value'),
         State('mapping-points-rep', 'actor'),
         prevent_initial_call=True,
     )
     def on_show_mapping_points(visible_checked, points_actor):
         points_actor['visibility'] = visible_checked
-        return points_actor
+        return points_actor, not visible_checked
 
     @app.callback(
         Output('mapping-points-poly', 'points', allow_duplicate=True),
+        Output('point-select', 'options'),
         Input('mapping-points-location', 'value'),
         State('mapping-points-type', 'value'),
         State('map-selector', 'value'),
@@ -414,7 +472,7 @@ def get_dash_app(study, bgnd=None):
     )
     def on_mapping_points_location_changed(location, invalid, map_name):
         if not map_name:
-            return []  # mapping points location
+            return [], {}  # mapping points location
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
 
@@ -430,13 +488,17 @@ def get_dash_app(study, bgnd=None):
             point_location = np.asarray([p.prjX for p in points])
 
         point_location = point_location.ravel().tolist()
+        point_names = [to_drop_option(p.name)
+                       for p in points]
 
-        return point_location
+        return point_location, point_names
 
     @app.callback(
         Output('mapping-points-poly', 'points', allow_duplicate=True),
         Output('mapping-points-selected', 'values', allow_duplicate=True),
         Output('mapping-points-id', 'values', allow_duplicate=True),
+        Output('point-select', 'options', allow_duplicate=True),
+        Output('point-select', 'value', allow_duplicate=True),
         Input('mapping-points-type', 'value'),
         State('mapping-points-location', 'value'),
         State('map-selector', 'value'),
@@ -444,9 +506,11 @@ def get_dash_app(study, bgnd=None):
     )
     def on_mapping_points_type_changed(invalid, location, map_name):
         if not map_name:
-            return ([],  # mapping points location
-                    [],  # mapping points selected
-                    [],  # mapping points ID
+            return ([],    # mapping points location
+                    [],    # mapping points selected
+                    [],    # mapping points ID
+                    {},    # mapping points selection dropdown
+                    None,  # mapping points selection dropdown no selection
                     )
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
@@ -464,21 +528,27 @@ def get_dash_app(study, bgnd=None):
 
         point_location = point_location.ravel().tolist()
         point_names = [int(p.name.split('P')[1]) for p in points]
+        point_names_dd = [to_drop_option(p.name) for p in points]
         point_selected = np.full(len(points), 0, dtype=int)
 
         return (point_location,  # mapping points location
                 point_selected,  # mapping points selected
-                point_names      # mapping points ID
+                point_names,     # mapping points ID
+                point_names_dd,  # mapping points selection dropdown
+                None,  # mapping points selection dropdown no selection
                 )
 
     @app.callback(
         Output('mapping-points-selected', 'values'),
+        Output('point-select', 'value'),
         Input('vtk-view', 'clickInfo'),
         State('mapping-points-poly', 'points'),
         State('mapping-points-visible', 'value'),
+        State('mapping-points-id', 'values'),
         prevent_initial_call=True,
     )
-    def on_mapping_point_selected(click_data, points, points_visible):
+    def on_mapping_point_clicked(click_data,
+                                 points, points_visible, point_ids):
         if not click_data or not points_visible:
             return no_update
 
@@ -495,6 +565,33 @@ def get_dash_app(study, bgnd=None):
         # update selection array
         selection = np.full(points.shape[0], 0, dtype=int)
         selection[index] = 1
+
+        return selection, 'P{}'.format(point_ids[index])
+
+    @app.callback(
+        Output('mapping-points-selected', 'values', allow_duplicate=True),
+        Input('point-select', 'value'),
+        State('mapping-points-id', 'values'),
+        State('mapping-points-visible', 'value'),
+        prevent_initial_call=True,
+    )
+    def on_mapping_point_selected(point_name,
+                                  point_ids, points_visible):
+        if not point_name or not points_visible:
+            return no_update
+
+        # update selection array
+        p_id = int(point_name[1:])  # remove "P" from point name
+        point_index = np.argwhere(np.array(point_ids) == p_id)
+
+        if not point_index.size == 1:
+            return no_update
+
+        point_index = point_index.flatten()[0]
+
+        # update selection array
+        selection = np.full(len(point_ids), 0, dtype=int)
+        selection[point_index] = 1
 
         return selection
 
@@ -563,6 +660,9 @@ def get_dash_app(study, bgnd=None):
     def on_lesion_parameter_changed(rfi_name, lesion_glyphs_state,
                                     lesion_mapper, map_name):
         if not rfi_name or not map_name:
+            lesion_mapper['colorByArrayName'] = None
+            lesion_mapper['scalarMode'] = 0  # DEFAULT
+
             return ([],                   # lesions RFI value
                     [0, 1],               # lesions RFI color range
                     lesion_glyphs_state,  # glyph algorithm state
@@ -583,15 +683,18 @@ def get_dash_app(study, bgnd=None):
                     )
 
         p_map = [m for m in study.maps.values() if m.name == map_name][0]
-        rfi = [rfi.value for lesion in p_map.lesions for rfi in lesion.RFIndex
-               if rfi.name == rfi_name]
 
-        # get data range as integers for UI objects
-        rng = [np.floor(min(rfi)).astype(int),
-               np.ceil(max(rfi)).astype(int)
+        rfi = [rfi.value if rfi.name == rfi_name else np.nan
+               for site in p_map.lesions.sites
+               for rfi in site.RFIndex
                ]
 
-        diameter = np.median([lesion.diameter for lesion in p_map.lesions])
+        # get data range as integers for UI objects
+        rng = [np.floor(np.nanmin(rfi)).astype(int),
+               np.ceil(np.nanmax(rfi)).astype(int)
+               ]
+
+        diameter = np.median([site.diameter for site in p_map.lesions.sites])
 
         # update glyph representation
         lesion_glyphs_state['radius'] = diameter / 2
@@ -599,7 +702,7 @@ def get_dash_app(study, bgnd=None):
         lesion_mapper['scalarMode'] = 3  # USE_POINT_FIELD_DATA
 
         return (rfi,                    # lesions RFI values
-                rng,   # lesions RFI color range
+                rng,                    # lesions RFI color range
                 lesion_glyphs_state,    # glyph algorithm state
                 lesion_mapper,          # lesion representation mapper
                 False,                  # lesion color range slider disabled

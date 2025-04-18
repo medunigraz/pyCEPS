@@ -39,6 +39,10 @@ EMAIL = 'robert.arnold@medunigraz.at'
 AUTHOR = 'Robert Arnold'
 REQUIRES_PYTHON = '>=3.8'
 VERSION = '{{VERSION_PLACEHOLDER}}'
+PROJECT_URLS = {
+    'Github': 'https://github.com/medunigraz/pyCEPS',
+    'Changelog': 'https://github.com/medunigraz/pyCEPS/blob/main/CHANGELOG.md',
+}
 CLASSIFIERS = [
     # Trove classifiers
     # Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers
@@ -95,6 +99,7 @@ setup(
     author_email=EMAIL,
     python_requires=REQUIRES_PYTHON,
     url=URL,
+    project_urls=PROJECT_URLS,
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
     # If your package is a single module, use this instead of 'packages':
     # py_modules=['pyceps'],

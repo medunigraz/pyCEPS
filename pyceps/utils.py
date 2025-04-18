@@ -17,9 +17,14 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
+from typing import List, Union
 
 
-def console_progressbar(count, total, suffix=''):
+def console_progressbar(
+        count: int,
+        total: int,
+        suffix: str = ''
+) -> None:
     """
     https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
     """
@@ -37,7 +42,10 @@ def console_progressbar(count, total, suffix=''):
     sys.stdout.flush()  # As suggested by Rom Ruben
 
 
-def get_col_idx_from_header(header, names):
+def get_col_idx_from_header(
+        header,
+        names: Union[str, List[str]]
+) -> List[int]:
     """Get the column index from the column name(s)."""
 
     if not isinstance(names, list):

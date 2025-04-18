@@ -20,7 +20,7 @@
 """
 Command line interface for pyEPmap
 """
-
+import argparse
 import os
 import traceback
 import shutil
@@ -30,8 +30,8 @@ import logging
 import tempfile
 from typing import Tuple
 
-from pyceps.fileio.cartoio import CartoStudy
-from pyceps.fileio.precisionio import PrecisionStudy
+from pyceps.carto import CartoStudy
+from pyceps.precision import PrecisionStudy
 
 
 logger = logging.getLogger('pyceps')
@@ -78,18 +78,9 @@ def get_args():
 
     parser = ArgumentParser(
         prog='pyceps',
+        # add_help=False,
         # formatter_class=RawTextHelpFormatter,
     )
-
-    # configure clinical mapping system from which to import
-    system = parser.add_argument_group('Clinical Mapping System')
-    system.add_argument('--system',
-                        required=True,
-                        type=str.upper,
-                        choices=['CARTO', 'PRECISION'],
-                        help='Specify the clinical mapping system that '
-                             'recorded the study.'
-                        )
 
     # specify location of data
     # Note: subsequent arguments are mutually exclusive. The user must enter
@@ -101,14 +92,15 @@ def get_args():
         type=str,
         default=None,
         help='Import study from EAM repository.\n'
-             'Specify path to folder or to ZIP file containing study data.'
+             'Specify path to folder or to ZIP file containing study data.\n'
+             'IMPORTANT: use --system to specify EAM system!'
     )
     load.add_argument(
-        '--pkl-file',
+        '--study-file',
         type=str,
         default=None,
-        help='Load study from previously created .pkl file.\n'
-             'If study root saved in PKL file does not point to a valid '
+        help='Load study from previously created pyCEPS file.\n'
+             'If study root saved in pyCEPS file does not point to a valid '
              'location, it can be set with --change-root'
     )
 
@@ -121,9 +113,9 @@ def get_args():
         const='ALL',
         help='Convenience function to export complete EAM data set.\n'
              'When importing from EAM repository all available maps are '
-             'loaded. When importing from PKL file all maps currently in PKL '
-             'are exported or --import-map might be used to import additional '
-             'map(s) before export.\n'
+             'loaded. When importing from pyCEPS file all maps currently in '
+             'the file are exported or --import-map might be used to import '
+             'additional map(s) before export.\n'
              'Alternatively a specific map name can be given.\n'
              'Calls all functions under Advanced Exports with default values.'
     )
@@ -132,10 +124,16 @@ def get_args():
         type=str,
         nargs='?',
         const='DEFAULT',
-        help='Save study as PKL file.\n'
+        help='Save study as pyCEPS file.\n'
              'Default location is folder above study root, default name is '
-             'study name e.g. <study_root>/../<study_name>.pkl\n'
-             'Custom location and file name can be given alternatively.'
+             'study name e.g. <study_root>/../<study_name>.pyceps\n'
+             'Custom location and file name can be given alternatively. All '
+             'export files are redirected to this location.'
+    )
+    bio.add_argument(
+        '--keep-ecg',
+        action='store_true',
+        help='Save point ECG data in pyCEPS export file.'
     )
 
     vis = parser.add_argument_group('Visualization')
@@ -144,6 +142,12 @@ def get_args():
         action='store_true',
         help='Visualize the study. This opens a local HTML page in the '
              'standard browser. NOTE: This will lock the console!'
+    )
+    vis.add_argument(
+        '--quick',
+        action='store_true',
+        help='Quick preview of study contents.\n'
+             'NOTE: any other commands for import/export are ignored!'
     )
 
     aio = parser.add_argument_group('Advanced Import/Export')
@@ -170,7 +174,7 @@ def get_args():
              'surface labels are included.\n'
              'Note: surface maps can also be exported as .dat with '
              '"--dump-surface-map".\n'
-             'Default: <study_root>/../<map>.[pts,elem,vtk]'
+             'Default: <study_root>/../<map>.surf.[pts,elem,vtk]'
     )
     aio.add_argument(
         '--dump-point-data',
@@ -179,9 +183,11 @@ def get_args():
              'openCARP format.\n'
              'For each mapping point following data are exported: unipolar '
              'voltages (UNI), bipolar voltages (BIP) and local activation '
-             'time (LAT), impedance (IMP, if available), and contact force ('
-             'FRC, if available).'
-             'Default: <study_root>/../<map>.ptdata.UNI.pc.dat'
+             'time (LAT), point identifier (NAME), time stamps for '
+             'annotations (LAT, REF), window of interest (WOI_START, '
+             'WOI_END), impedance (IMP, if available), and contact force '
+             '(FRC, if available).\n'
+             'Default: <study_root>/../<map>.ptdata.<parameter>.pc.dat'
     )
     aio.add_argument(
         '--dump-point-ecgs',
@@ -191,21 +197,21 @@ def get_args():
         choices=['I', 'II', 'III',
                  'aVR', 'aVL', 'aVF',
                  'V1', 'V2', 'V3', 'V4', 'V5', 'V6'],
-        help='Export ecg traces for all valid points associated '
+        help='Export ECG traces for all valid points associated '
              'with current "--map" to IGB.\n'
              'Dimension: Nx2500 (valid recorded points x ms)\n'
              'Note: Requires valid study root!\n'
              'If no traces are specified, all surface ECGs are '
              'exported by default.\n'
-             'Default: <study_root>/../<map>.ecg.V1.pc.igb'
+             'Default: <study_root>/../<map>.ecg.<lead>.pc.igb'
     )
     aio.add_argument(
         '--dump-point-egms',
         action='store_true',
-        help='Export point EGMs for all valid points associated '
-             'with current "--map".\n'
+        help='Export point EGM traces for unipolar, bipolar and reference '
+             'channels for all valid points associated with current "--map".\n'
              'Dimension: Nx2500 (valid recorded nodes x ms)\n'
-             'Default: e.g. <study_root>/../<map>.egm.BIP.is.igb'
+             'Default: e.g. <study_root>/../<map>.egm.<lead>.pc.igb'
     )
     aio.add_argument(
         '--dump-map-ecgs',
@@ -218,13 +224,20 @@ def get_args():
         '--dump-surface-maps',
         action='store_true',
         help='Export surface maps associated with current "--map" to DAT.\n'
-             'Default: <study_root>/../<map>.map.BIP.dat'
+             'Default: <study_root>/../<map>.map.<parameter>.dat'
     )
     aio.add_argument(
         '--dump-lesions',
         action='store_true',
         help='Export lesion data associated with current "--map".\n'
              'Default: <study_root>/../<map>.lesions.<RFI_name>.dat'
+    )
+    aio.add_argument(
+        '--dump-paso',
+        action='store_true',
+        help='Export PaSo data associated with current "--map" to JSON.\n'
+             'NOTE: only available for Carto studies!'
+             'Default: <study_root>/../<map>.paso.RefTemplate_FULL.json'
     )
 
     misc = parser.add_argument_group('Miscellaneous')
@@ -235,13 +248,13 @@ def get_args():
         help='Change location of EAM data repository.\n'
              'Parent directory of "--study-xml" for Carto3 or folder for '
              'Precision. Can be absolute path to folder or ZIP file.\n'
-             'Used only when data is loaded from PKL file.'
+             'Used only when data is loaded from pyCEPS file.'
     )
     misc.add_argument(
         '--egm-from-pos',
         action='store_true',
-        help='Retrieve EGM channel names from recording positions.\n'
-             'This will add coordinates for the second unipolar EGM channel.\n'
+        help='Retrieve EGM channel names from recording positions during '
+             'import.\n'
              'Note: Requires valid study root!'
     )
     misc.add_argument(
@@ -257,8 +270,29 @@ def get_args():
         default='cp1252',
         help='Set encoding for file imports. Default: "cp1252".'
     )
+    misc.add_argument('--password',
+                      type=str,
+                      default='',
+                      help='Password for protected archives.'
+                      )
 
-    return parser.parse_args()
+    main_args, _ = parser.parse_known_args()
+
+    # configure clinical mapping system from which to import
+    conditional_parser = argparse.ArgumentParser(parents=[parser],
+                                                 add_help=False
+                                                 )
+    if main_args.study_repository:
+        system = conditional_parser.add_argument_group('Clinical Mapping System')
+        system.add_argument('--system',
+                            required=main_args.study_repository,
+                            type=str.upper,
+                            choices=['CARTO', 'PRECISION'],
+                            help='Specify the clinical mapping system that '
+                                 'recorded the study.'
+                            )
+
+    return conditional_parser.parse_args()
 
 
 def configure_logger(log_level: str) -> Tuple[int, str]:
@@ -304,33 +338,61 @@ def load_study(args):
         logger.info('importing {} study'.format(args.system))
         if args.system == 'CARTO':
             study = CartoStudy(args.study_repository,
+                               pwd=args.password,
                                encoding=args.encoding)
+            study.import_study()
+            study.import_paso()
         elif args.system == 'PRECISION':
             study = PrecisionStudy(args.study_repository,
+                                   pwd=args.password,
                                    encoding=args.encoding)
+            study.import_study()
         else:
             raise KeyError('unknown EAM system specified!')
 
     else:
-        study_pkg = os.path.abspath(args.pkl_file)
-        logger.info('loading {} study PKL'.format(args.system))
+        study_file = os.path.abspath(args.study_file)
+        logger.info('loading study from file {}'.format(study_file))
+
         # read in study from a pkl file
         # Note: both inputs are mutually exclusive
-        if not study_pkg.lower().endswith(('.pkl', '.pkl.gz')):
+        if not study_file.lower().endswith('.pyceps'):
             # supposedly reading the carto folder directly
-            study_pkg += '.pkl'
+            study_file += '.pyceps'
 
-        if not os.path.isfile(study_pkg):
-            raise FileNotFoundError('could not find {}'.format(study_pkg))
+        if not os.path.isfile(study_file):
+            raise FileNotFoundError('could not find {}'.format(study_file))
 
         # update argument in case of later usage
-        args.study_pkg = study_pkg
+        args.study_file = study_file
 
-        # now we can load the object
-        if args.system == 'CARTO':
-            study = CartoStudy.load(study_pkg, root=args.change_root)
-        elif args.system == 'PRECISION':
-            study = PrecisionStudy.load(study_pkg, root=args.change_root)
+        # now we can open the file and try to load the object
+        # read file line-wise, not using eTree for performance reasons
+        with open(study_file, 'r') as fid:
+            line = fid.readline()
+            if not line == '<?xml version="1.0" encoding="utf-8"?>\n':
+                logger.warning('unknown file format, aborting!')
+                return None, args
+            line = fid.readline()
+            try:
+                system = line.split('system="')[1].split('"')[0]
+            except IndexError:
+                logger.warning('unable to determine EAM system from file.\n'
+                               'key "system" not found in line {}'
+                               .format(line))
+                return None, args
+
+        if system.lower() == 'carto3':
+            study = CartoStudy.load(args.study_file,
+                                    password=args.password,
+                                    repository_path=args.change_root
+                                    )
+        elif system.lower() == 'precision':
+            study = PrecisionStudy.load(args.study_file,
+                                        password=args.password,
+                                        repository_path=args.change_root
+                                        )
+
         else:
             raise KeyError('unknown EAM system specified!')
         # TODO: notification if root has changed (needed to process unsaved changes)
@@ -350,41 +412,60 @@ def load_study(args):
 def export_map_data(study, map_name, args):
     """Export data for specified maps."""
 
+    # handle explicit export location
+    out_path = ''
+    if args.save_study:
+        out_path = '' if args.save_study == 'DEFAULT' else args.save_study
+    out_path = study.resolve_export_folder(os.path.dirname(out_path))
+
     # save carto mesh
     if args.dump_mesh:
-        study.maps[map_name].export_mesh_carp()
+        study.maps[map_name].export_mesh_carp(out_path)
         surf_maps = study.maps[map_name].surface.get_map_names()
         surf_labels = study.maps[map_name].surface.get_label_names()
-        study.maps[map_name].export_mesh_vtk(maps_to_add=surf_maps,
-                                             labels_to_add=surf_labels)
+        study.maps[map_name].export_mesh_vtk(output_folder=out_path,
+                                             maps_to_add=surf_maps,
+                                             labels_to_add=surf_labels
+                                             )
 
     # dump point data for recording points
     if args.dump_point_data:
-        study.maps[map_name].export_point_data()
-        study.maps[map_name].export_point_info()
+        study.maps[map_name].export_point_data(out_path)
+        study.maps[map_name].export_point_info(out_path)
 
     # dump ECG traces for recording points
     if args.dump_point_ecgs:
         study.maps[map_name].export_point_ecg(
+            output_folder=out_path,
             which=(None if args.dump_point_ecgs == 'DEFAULT'
                    else args.dump_point_ecgs)
         )
 
     # dump EGM traces for recording points
     if args.dump_point_egms:
-        study.maps[map_name].export_point_egm()
+        study.maps[map_name].export_point_egm(out_path)
 
     # dump representative ECGs for map
     if args.dump_map_ecgs:
-        study.maps[map_name].export_map_ecg()
+        study.maps[map_name].export_map_ecg(out_path)
 
     # dump surface signal maps to DAT
     if args.dump_surface_maps:
-        study.maps[map_name].export_signal_maps()
+        study.maps[map_name].export_signal_maps(out_path)
 
     # export lesion data
     if args.dump_lesions:
-        study.maps[map_name].export_lesions()
+        study.maps[map_name].export_lesions(out_path)
+
+    # export paso data
+    if args.dump_paso:
+        if isinstance(study, CartoStudy):
+            study.export_paso(out_path)
+
+    # check if additional meshes are part of the study
+    if study.meshes and args.dump_mesh:
+        logger.info('found additional meshes in study, exporting...')
+        study.export_additional_meshes(out_path)
 
 
 def execute_commands(args):
@@ -420,14 +501,14 @@ def execute_commands(args):
     if import_maps:
         logger.info('need to import map(s): {}'.format(import_maps))
 
-        if args.pkl_file and not study.is_root_valid():
+        if args.study_file and not study.is_root_valid():
             logger.warning('a valid study root is necessary to import maps!')
         else:
             study.import_maps(import_maps,
                               egm_names_from_pos=args.egm_from_pos)
             # import lesion data for all loaded maps
             for map_name in study.maps.keys():
-                study.maps[map_name].import_lesions(directory=None)
+                study.maps[map_name].import_lesions(directory='')
             data_changed = True
 
     # work out which map(s) to process
@@ -464,40 +545,75 @@ def execute_commands(args):
         args.dump_map_ecgs = True
         args.dump_surface_maps = True
         args.dump_lesions = True
+        args.dump_paso = True
 
     # process selected map(s)
     for map_name in export_maps:
         logger.info('exporting data for map {}'.format(map_name))
         export_map_data(study, map_name, args)
 
-    # check if additional meshes are part of the study
-    if study.meshes and args.dump_mesh:
-        logger.info('found additional meshes in study, exporting...')
-        study.export_additional_meshes()
-
     # save study
     if not args.save_study and data_changed:
+        logger.debug('unsaved changes found!')
         user_input = input('There are unsaved changes, save them now? [Y/N] ')
         # input validation
         if user_input.lower() in ('y', 'yes'):
+            logger.debug('user selected to save changes')
             args.save_study = 'DEFAULT'
+        elif user_input.lower() in ('n', 'no'):
+            logger.debug('user selected to continue without saving changes')
         else:
             logger.warning('Unknown user input {}'.format(user_input))
 
-    pkl_loc = ''
+    pyceps_loc = ''
     if args.save_study:
-        pkl_loc = study.save(None if args.save_study == 'DEFAULT' else
-                             args.save_study)
+        pyceps_loc = study.save(None if args.save_study == 'DEFAULT' else
+                                args.save_study,
+                                keep_ecg=args.keep_ecg)
 
     # redirect log file
-    log_file = pkl_loc.replace('.pkl', '_import.log') if pkl_loc else (
-        os.path.join(
+    if pyceps_loc:
+        base_file, _ = os.path.splitext(pyceps_loc)
+        log_file = base_file + '_import.log'
+    else:
+        log_file = os.path.join(
             study.build_export_basename(''),
             study.name + '_import.log'
         )
-    )
 
     return study, log_file
+
+
+def quick_visualization(args):
+    """
+    Quick inspection of studies.
+
+    NOTE: no import/export is performed and no log file is saved.
+
+    Raises:
+        argparse.ArgumentError : if study repository is not given
+        KeyError : if system is recognized
+
+    Returns:
+        None
+    """
+
+    if not args.study_repository:
+        raise argparse.ArgumentTypeError('Option --quick requires '
+                                         '--study-repository!'
+                                         )
+
+    if args.system == 'CARTO':
+        study = CartoStudy(args.study_repository,
+                           pwd=args.password,
+                           encoding=args.encoding)
+        study.visualize_car()
+    elif args.system == 'PRECISION':
+        study = PrecisionStudy(args.study_repository,
+                               pwd=args.password,
+                               encoding=args.encoding)
+    else:
+        raise KeyError('unknown EAM system specified!')
 
 
 def run():
@@ -506,6 +622,27 @@ def run():
 
     # initialize logger and set downstream logger to same logging level
     log_fid, log_path = configure_logger(cl_args.logger_level)
+    logger.info(
+        'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
+        'This program comes with ABSOLUTELY NO WARRANTY;\n'
+        'This is free software, and you are welcome to redistribute '
+        'it under certain conditions; see LICENSE.txt for details.\n'
+    )
+
+    # check if quick inspection is requested, this will skip the rest
+    if cl_args.quick:
+        # close handlers for logging
+        for handler in logger.handlers:
+            logger.removeHandler(handler)
+            handler.close()
+        logging.shutdown()
+        # remove temporary log files
+        os.close(log_fid)
+        os.remove(log_path)
+
+        quick_visualization(cl_args)
+
+        return
 
     # import the EP study
     ep_study = None
@@ -540,10 +677,4 @@ def run():
 
 
 if __name__ == '__main__':
-    print(
-        'pyCEPS  Copyright (C) 2023  Robert Arnold\n'
-        'This program comes with ABSOLUTELY NO WARRANTY;\n'
-        'This is free software, and you are welcome to redistribute '
-        'it under certain conditions; see LICENSE.txt for details.\n'
-    )
     run()
