@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1] - 2025-05-14
+
+### Hotfix
+
+- fixed error for EnSite version numbering including patch (Robert Arnold)
+
 ## [1.1.0]
 
 ### Added
@@ -202,6 +208,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.1
 [1.1.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.0
 [1.0.5]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.5
 [1.0.4]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.4
