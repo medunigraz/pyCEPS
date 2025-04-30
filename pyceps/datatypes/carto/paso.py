@@ -133,7 +133,6 @@ class PaSoTemplate:
         log.debug('loading PaSo configuration from file {}'.format(fid.name))
 
         line = fid.readline().decode(encoding=encoding).rstrip()
-        skip_rows = 1
 
         while not line.rstrip() == 'ECG:':
             if line.startswith('ID:'):
@@ -215,16 +214,13 @@ class PaSoTemplate:
 
             # continue with next line
             line = fid.readline().decode(encoding=encoding).rstrip()
-            skip_rows += 1
 
         # read complete header, now load ECG data
         ecg_names = fid.readline().decode(encoding=encoding).rstrip().split()
-        skip_rows += 1
 
         # read data, fixed length columns
         data = np.genfromtxt(fid,
                              delimiter=[5] * len(ecg_names),
-                             skip_header=skip_rows
                              )
 
         # build traces
@@ -531,7 +527,9 @@ class PaSo:
                               for x in template.get('currentWOI').split()
                               ]
             new.isReference = template.get('isReference') == 'True'
-            _, new.ecg = xml_load_binary_trace(template.find('Traces'))
+            _, traces = xml_load_binary_trace(template.find('Traces'))
+            # flatten list of list
+            new.ecg = [t[0] for t in traces]
 
             templates.append(new)
 

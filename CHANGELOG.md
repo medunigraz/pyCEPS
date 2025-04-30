@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## [1.1.1] - 2025-05-14
+
+### Hotfix
+
+- fixed error for EnSite version numbering including patch (Robert Arnold)
+
+## [1.1.0]
+
+### Added
+
+- export of multidimensional Numpy arrays to PYCEPS file (Robert Arnold)
+- requirement for Pandas (Robert Arnold)
+- **import/export for EnSiteX data sets** (Robert Arnold)
+
+### Changed
+
+- point EGM data are now lists of Trace (Robert Arnold)
+- uniX data format. Length equals number of signal traces (Robert Arnold)
+
+### Fixed
+
+- PaSo import from PYCEPS file (Robert Arnold)
+- duplicate export of uniX coordinates in PYCEPS file (Robert Arnold)
+
+## [1.0.5]
 
 ### Added
 
@@ -9,6 +33,9 @@
 ### Changed
 
 ### Fixed
+
+- EGM data import if channel name is not found in data (Robert Arnold)
+- wrong data size when reading PaSo templates (Robert Arnold)
 
 ### Removed
 
@@ -181,6 +208,9 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.1
+[1.1.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.0
+[1.0.5]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.5
 [1.0.4]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.4
 [1.0.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.3
 [1.0.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.2

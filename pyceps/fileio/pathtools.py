@@ -544,7 +544,10 @@ class Repository:
             path: str
     ) -> bool:
         """Check if path points to archive."""
-        return zipfile.is_zipfile(path) or py7zr.is_7zfile(path)
+
+        is_xlsx = os.path.splitext(path)[1] == '.xlsx'
+        is_archive = zipfile.is_zipfile(path) or py7zr.is_7zfile(path)
+        return is_archive and not is_xlsx
 
     @staticmethod
     def _zip_is_archive(
