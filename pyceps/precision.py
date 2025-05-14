@@ -415,6 +415,10 @@ class PrecisionMap(EPMap):
                 ]
                 # TODO: get unipolar recordings for Precision
                 uni_names = ecg_data['rov']['names'][i].split()[-1].split('-')
+                if len(uni_names) != 2:
+                    # in some cases no name of the ROV trace is given
+                    uni_names = ['unknown', 'unknown']
+
                 point.egmUni = [
                     Trace(name=uni_names[0],
                           data=np.full(point.egmBip[0].data.shape, np.nan),
@@ -1622,7 +1626,7 @@ class PrecisionStudy(EPStudy):
     def get_version(
             version_number,
             minor=False
-    ) -> Union[str, Tuple[str, str]]:
+    ) -> Union[int, Tuple[int, int]]:
         """
         Return version details.
 
@@ -1632,12 +1636,37 @@ class PrecisionStudy(EPStudy):
             minor : bool (optional)
                 return also minor version
         """
-        try:
-            v_major, v_minor = version_number.split('.')
-        except ValueError:
-            # only major version available
-            v_major = version_number
-            v_minor = ''
+        v_major = -1
+        v_minor = -1
+        num_identifiers = version_number.count('.')
+        if num_identifiers == 0:
+            # maybe major version only
+            try:
+                v_major = int(version_number)
+            except ValueError:
+                log.warning('unable to get major version from {}'
+                            .format(version_number)
+                            )
+
+        elif num_identifiers == 1:
+            # version number with major and minor
+            try:
+                v_major, v_minor = [int(x) for x in version_number.split('.')]
+            except ValueError:
+                log.warning('unable to get major and minor version from {}'
+                            .format(version_number)
+                            )
+
+        elif num_identifiers == 2:
+            # version number with major, minor and patch
+            try:
+                v_major, v_minor, _ = [int(x) for x
+                                       in version_number.split('.')
+                                       ]
+            except ValueError:
+                log.warning('unable to get major and minor version from {}'
+                            .format(version_number)
+                            )
 
         return (v_major, v_minor) if minor else v_major
 
@@ -1675,7 +1704,12 @@ class PrecisionStudy(EPStudy):
                 # get version to instantiate correct class
                 major = self.get_version(map_item.version)
 
-                if 5 <= int(major) < 10:
+                if major < 0:
+                    log.warning('unable to retrieve version from {}'
+                                .format(map_item.version))
+                    continue
+
+                elif 5 <= major < 10:
                     new_map = PrecisionMap(
                         name=map_name,
                         surface_file=map_item.surfaceFile,
@@ -1684,7 +1718,8 @@ class PrecisionStudy(EPStudy):
                         version=map_item.version,
                         parent=self,
                     )
-                elif 10 <= int(major):
+
+                elif 10 <= major:
                     new_map = PrecisionMapX(
                         name=map_name,
                         surface_file=map_item.surfaceFile,
@@ -1968,7 +2003,7 @@ class PrecisionStudy(EPStudy):
 
             major = study.get_version(version)
 
-            if 5 <= int(major) < 10:
+            if 5 <= major < 10:
                 new_map = PrecisionMap(
                     name=name,
                     surface_file=surf_file,
@@ -1977,7 +2012,7 @@ class PrecisionStudy(EPStudy):
                     version=version,
                     parent=study
                 )
-            elif 10 <= int(major):
+            elif 10 <= major:
                 new_map = PrecisionMapX(
                     name=name,
                     surface_file=surf_file,
