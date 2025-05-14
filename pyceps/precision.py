@@ -415,6 +415,10 @@ class PrecisionMap(EPMap):
                 ]
                 # TODO: get unipolar recordings for Precision
                 uni_names = ecg_data['rov']['names'][i].split()[-1].split('-')
+                if len(uni_names) != 2:
+                    # in some cases no name of the ROV trace is given
+                    uni_names = ['unknown', 'unknown']
+
                 point.egmUni = [
                     Trace(name=uni_names[0],
                           data=np.full(point.egmBip[0].data.shape, np.nan),
