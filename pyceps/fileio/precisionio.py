@@ -340,12 +340,6 @@ def parse_dxl_header(
     cfe_refractory = np.nan
 
     for line in header_str.splitlines():
-        if line.startswith('St. Jude Medical. File Revision :'):
-            version = line.split(':')[1].strip()
-            if version not in ['5.2', '5.6']:
-                raise AttributeError('file format {} not supported'
-                                     .format(version))
-
         if line.startswith('Export Data Element :'):
             data_element = line.split(':')[1].strip()
             if not data_element.lower() == 'dxl':
