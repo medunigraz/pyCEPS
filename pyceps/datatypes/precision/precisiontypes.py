@@ -206,12 +206,19 @@ BipChannelConfig = namedtuple('BipChannelConfig',
                               ['channel', 'uni1channel', 'uni2channel'])
 
 PrecisionLesion = namedtuple('PrecisionLesion',
-                             ['X',
+                             ['ID',
+                              'X',
                               'diameter',
-                              'Type',
-                              'Surface',
-                              'display',
-                              'visible',
-                              'color'
+                              'energy',
+                              'avgPower',
+                              'avgTemp',
+                              'maxTemp',
+                              'maxImp',
+                              'minImp',
+                              'avgContactForce',
+                              'minContactForce',
+                              'maxContactForce',
+                              'FTI',
+                              'LSI'
                               ]
                              )
