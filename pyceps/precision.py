@@ -527,6 +527,12 @@ class PrecisionMap(EPMap):
             self.dataLocation + '/' + 'ECG_RAW.csv'
         )
         if not self.parent.repository.is_file(ecg_file):
+            log.warning('no raw ECG data found ({})'.format(ecg_file))
+
+        ecg_file = self.parent.repository.join(
+            self.dataLocation + '/' + 'ECG_FILTERED.csv'
+        )
+        if not self.parent.repository.is_file(ecg_file):
             log.warning('no ECG data found ({})'.format(ecg_file))
             return []
 
