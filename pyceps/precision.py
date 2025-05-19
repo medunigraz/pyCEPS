@@ -311,6 +311,9 @@ class PrecisionMap(EPMap):
         if len(geo_file) == 1:
             self.surfaceFile = geo_file[0]
             self.surfaceFilePath = self.dataLocation
+            log.info('found {}, using this'
+                     .format(self.surfaceFile)
+                     )
 
         mesh_file = self.parent.repository.join(
             self.surfaceFilePath + '/' + self.surfaceFile)
