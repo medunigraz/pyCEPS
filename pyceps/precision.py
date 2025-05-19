@@ -669,23 +669,18 @@ class PrecisionMap(EPMap):
             sites : list of PrecisionLesion
 
         Returns:
-            list of AblationSites
+            Lesions
         """
 
         lesions = []
         for site in sites:
-            # Precision lesions only have color information, convert to
-            # numeric value as RFI
-            rfi_value = (site.color[0]
-                         + site.color[1] * 256
-                         + site.color[2] * 256**2
-                         )
-            rfi = RFIndex(name='precision', value=rfi_value)
-            lesions.append(AblationSite(X=site.X,
-                                        diameter=site.diameter,
-                                        RFIndex=[rfi]
-                                        )
-                           )
+            rfi = [
+                RFIndex(name='FTI', value=site.FTI),
+                RFIndex(name='LSI', value=site.LSI)
+            ]
+            lesions.append(
+                AblationSite(X=site.X, diameter=site.diameter, RFIndex=rfi)
+            )
 
         return Lesions(lesions)
 
