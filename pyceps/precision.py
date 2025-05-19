@@ -47,7 +47,7 @@ from pyceps.datatypes.lesions import Lesions, RFIndex, AblationSite
 from pyceps.fileio.precisionio import (
     CommentedTreeBuilder,
     read_mesh_file, load_dxl_data,
-    load_ecg_data, load_lesion_data,
+    load_ecg_data, load_automark_lesions,
     load_x_csv_header, load_x_map_csv, load_x_wave_data
 )
 from pyceps.datatypes.exceptions import MeshFileNotFoundError
@@ -485,16 +485,17 @@ class PrecisionMap(EPMap):
         log.info('loading lesion data for map {}'.format(self.name))
 
         lesion_file = self.parent.repository.join(
-            self.dataLocation + '/' + 'Lesions.csv'
+            self.dataLocation + '/' + 'AutoMarkSummaryList.csv'
         )
         if not self.parent.repository.is_file(lesion_file):
             log.warning('no lesion data found ({})'.format(lesion_file))
             return
 
         with self.parent.repository.open(lesion_file) as fid:
-            self.ablationSites = load_lesion_data(fid,
-                                                  encoding=self.parent.encoding
-                                                  )
+            self.ablationSites = load_automark_lesions(
+                fid,
+                encoding=self.parent.encoding
+            )
 
         # convert ablation sites data to base class lesions
         self.lesions = self.ablation_sites_to_lesion(self.ablationSites)
