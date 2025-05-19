@@ -17,7 +17,7 @@
 #     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 
 RepositoryInfo = namedtuple('RepositoryInfo',
@@ -141,11 +141,15 @@ class PrecisionXWaveData:
         data : ndarray
     """
     name: str = ''
-    pointNumber: np.ndarray = np.array([], dtype=np.int32)
-    freezeGroup: np.ndarray = np.array([], dtype=np.int32)
-    traceName: np.ndarray = np.array([], dtype=str)
+    pointNumber: np.ndarray = field(default_factory=lambda: np.array([],
+                                                                     dtype=np.int32))
+    freezeGroup: np.ndarray = field(default_factory=lambda: np.array([],
+                                                                     dtype=np.int32))
+    traceName: np.ndarray = field(default_factory=lambda: np.array([],
+                                                                     dtype=str))
     fs: float = 0.0
-    data: np.ndarray = np.array([], dtype=np.single)
+    data: np.ndarray = field(default_factory=lambda: np.array([],
+                                                                     dtype=np.single))
 
     def is_valid(self):
         return self.data.size != 0
