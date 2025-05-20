@@ -1037,13 +1037,6 @@ class EPMap:
         # get RFIndex names
         names, counts = self.lesions.get_rfi_names(return_counts=True)
 
-        # check validity first
-        if not all(x == len(self.lesions.sites) for x in counts):
-            log.warning('cannot export RFI data! mismatch between lesion '
-                        'size ({}) and parameters (names: {}, sites: {})'
-                        .format(len(self.lesions), names, counts))
-            return
-
         # dump RFI
         for name, count in zip(names, counts):
             # dump points
