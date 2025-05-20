@@ -18,6 +18,7 @@
 
 import logging
 from typing import IO, List
+from io import StringIO
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -340,12 +341,6 @@ def parse_dxl_header(
     cfe_refractory = np.nan
 
     for line in header_str.splitlines():
-        if line.startswith('St. Jude Medical. File Revision :'):
-            version = line.split(':')[1].strip()
-            if version not in ['5.2', '5.6']:
-                raise AttributeError('file format {} not supported'
-                                     .format(version))
-
         if line.startswith('Export Data Element :'):
             data_element = line.split(':')[1].strip()
             if not data_element.lower() == 'dxl':
@@ -580,7 +575,7 @@ def load_ecg_data(
     return traces
 
 
-def load_lesion_data(
+def load_automark_lesions(
         fid: IO,
         encoding: str = 'cp1252'
 ) -> List[PrecisionLesion]:
@@ -593,76 +588,55 @@ def load_lesion_data(
         encoding : str
             file encoding used to read file
 
-    Raises:
-        IOError : If file not found
-
     Returns:
         list of PrecisionLesion objects
     """
 
     # create child logger
-    log = logging.getLogger('{}.load_lesion_data'.format(__name__))
-
-    lesions = []
+    log = logging.getLogger('{}.load_automark_lesions'.format(__name__))
 
     # read data at once, files are only ~kB
     data = fid.read().decode(encoding=encoding)
 
-    start_idx = data.find('Number of waves (columns):', 0)
-    end_idx = data.find('\n', start_idx)
-    n_waves = int(data[start_idx:end_idx].strip().split(',')[1])
+    # skip header, blank line before data
+    skip_rows = 0
+    for line in data.splitlines():
+        skip_rows += 1
+        if not line:
+            break
 
-    start_idx = data.find('Number of samples (rows):', 0)
-    end_idx = data.find('\n', start_idx)
-    n_samples = int(data[start_idx:end_idx].strip().split(',')[1])
+    df = pd.read_csv(StringIO(data), skiprows=skip_rows, index_col=False)
 
-    start_idx = end_idx + 1
-    end_idx = data.find('\n', start_idx)
-    lesion_header = data[start_idx:end_idx].strip().split(',')
+    # convert data to Lesions
+    ablation_sites = []
+    for row in range(df.shape[0]):
+        lesion_id = df['Lesion ID'][row]
+        if not lesion_id.isnumeric():
+            # only valid lesion get an numeric ID
+            continue
 
-    start_idx = end_idx + 1
-    end_idx = data.find('EOF', start_idx)
-    lesion_string = data[start_idx:end_idx]
-    lesion_data_raw = np.genfromtxt(lesion_string.splitlines(),
-                                    delimiter=',',
-                                    dtype=str
-                                    )
-
-    # find relevant data
-    DATA_NAMES = ['x', 'y', 'z', 'Diameter',
-                  'Type', 'Surface', 'Display', 'Visible',
-                  'R', 'G', 'B'
-                  ]
-    # check if all data available
-    if not all(n in lesion_header for n in DATA_NAMES):
-        log.warning('could not all necessary lesion data, missing {}!'
-                    .format([n for n in DATA_NAMES if n not in lesion_header]))
-        return lesions
-
-    # build lesion objects
-    for i in range(n_samples):
-        lesions.append(PrecisionLesion(
-            X=np.array([float(lesion_data_raw[i, lesion_header.index('xw')]),
-                        float(lesion_data_raw[i, lesion_header.index('yw')]),
-                        float(lesion_data_raw[i, lesion_header.index('zw')]),
-                        ]
-                       ),
-            diameter=float(lesion_data_raw[i, lesion_header.index(
-                'Diameter')]),
-            Type=lesion_data_raw[i, lesion_header.index('Type')],
-            Surface=lesion_data_raw[i, lesion_header.index('Surface')],
-            display=bool(int(lesion_data_raw[i, lesion_header.index(
-                'Display')])),
-            visible=bool(int(lesion_data_raw[i, lesion_header.index(
-                'Visible')])),
-            color=[float(lesion_data_raw[i, lesion_header.index('R')]),
-                   float(lesion_data_raw[i, lesion_header.index('G')]),
-                   float(lesion_data_raw[i, lesion_header.index('B')]),
-                   ]
+        ablation_sites.append(
+            PrecisionLesion(
+                ID=int(lesion_id),
+                X=np.array([df['X'][row], df['Y'][row], df['Z'][row]],
+                           dtype=np.int32
+                           ),
+                diameter=5.0,
+                energy=int(df['Energy'][row]),
+                avgPower=int(df['Avg Power'][row]),
+                avgTemp=int(df['Avg Temp'][row]),
+                maxTemp=int(df['Max Temp'][row]),
+                maxImp=int(df['Imp Max'][row]),
+                minImp=int(df['Imp Min'][row]),
+                avgContactForce=int(df['Avg Contact Force (g)'][row]),
+                minContactForce=int(df['Min Contact Force (g)'][row]),
+                maxContactForce=int(df['Max Contact Force (g)'][row]),
+                FTI=int(df['FTI'][row]),
+                LSI=float(pd.to_numeric(df['LSI'][row], 'coerce')),
             )
         )
 
-    return lesions
+    return ablation_sites
 
 
 def load_x_csv_header(
