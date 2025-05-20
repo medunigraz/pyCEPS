@@ -1467,7 +1467,7 @@ class PrecisionStudy(EPStudy):
                 )
 
         for surfaceFile in file_matches:
-            with open(path.join(surfaceFile)) as fid:
+            with path.open(path.join(surfaceFile)) as fid:
                 tree = ET.parse(fid, parser=ET.XMLParser(
                     target=CommentedTreeBuilder()))
                 root = tree.getroot()
