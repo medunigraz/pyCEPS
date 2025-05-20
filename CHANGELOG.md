@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.2] - 2025-05-20
+
+### Added
+
+- import of Precision lesion data from AutoMark files (Robert Arnold)
+
+### Fixed
+
+- version error when reading Precision DxL header (Robert Arnold)
+- error when Precision ROV trace name is not splitable into unipolar names (Robert Arnold)
+- error when initializing Precision XWavedata dataclass with mutable NDarray (Robert Arnold)
+- error when exporting lesion data with multiple RF indices per site (Robert Arnold)
+- error when accessing files in nested folders within ZIP archive (Robert Arnold)
+
 ## [1.1.1] - 2025-05-14
 
 ### Hotfix
@@ -208,6 +222,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.1.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.2
 [1.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.1
 [1.1.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.0
 [1.0.5]: https://github.com/medunigraz/pyCEPS/releases/tag/1.0.5

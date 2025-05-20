@@ -47,7 +47,7 @@ from pyceps.datatypes.lesions import Lesions, RFIndex, AblationSite
 from pyceps.fileio.precisionio import (
     CommentedTreeBuilder,
     read_mesh_file, load_dxl_data,
-    load_ecg_data, load_lesion_data,
+    load_ecg_data, load_automark_lesions,
     load_x_csv_header, load_x_map_csv, load_x_wave_data
 )
 from pyceps.datatypes.exceptions import MeshFileNotFoundError
@@ -311,6 +311,9 @@ class PrecisionMap(EPMap):
         if len(geo_file) == 1:
             self.surfaceFile = geo_file[0]
             self.surfaceFilePath = self.dataLocation
+            log.info('found {}, using this'
+                     .format(self.surfaceFile)
+                     )
 
         mesh_file = self.parent.repository.join(
             self.surfaceFilePath + '/' + self.surfaceFile)
@@ -415,6 +418,10 @@ class PrecisionMap(EPMap):
                 ]
                 # TODO: get unipolar recordings for Precision
                 uni_names = ecg_data['rov']['names'][i].split()[-1].split('-')
+                if len(uni_names) != 2:
+                    # in some cases no name of the ROV trace is given
+                    uni_names = ['unknown', 'unknown']
+
                 point.egmUni = [
                     Trace(name=uni_names[0],
                           data=np.full(point.egmBip[0].data.shape, np.nan),
@@ -478,16 +485,17 @@ class PrecisionMap(EPMap):
         log.info('loading lesion data for map {}'.format(self.name))
 
         lesion_file = self.parent.repository.join(
-            self.dataLocation + '/' + 'Lesions.csv'
+            self.dataLocation + '/' + 'AutoMarkSummaryList.csv'
         )
         if not self.parent.repository.is_file(lesion_file):
             log.warning('no lesion data found ({})'.format(lesion_file))
             return
 
         with self.parent.repository.open(lesion_file) as fid:
-            self.ablationSites = load_lesion_data(fid,
-                                                  encoding=self.parent.encoding
-                                                  )
+            self.ablationSites = load_automark_lesions(
+                fid,
+                encoding=self.parent.encoding
+            )
 
         # convert ablation sites data to base class lesions
         self.lesions = self.ablation_sites_to_lesion(self.ablationSites)
@@ -518,6 +526,12 @@ class PrecisionMap(EPMap):
 
         ecg_file = self.parent.repository.join(
             self.dataLocation + '/' + 'ECG_RAW.csv'
+        )
+        if not self.parent.repository.is_file(ecg_file):
+            log.warning('no raw ECG data found ({})'.format(ecg_file))
+
+        ecg_file = self.parent.repository.join(
+            self.dataLocation + '/' + 'ECG_FILTERED.csv'
         )
         if not self.parent.repository.is_file(ecg_file):
             log.warning('no ECG data found ({})'.format(ecg_file))
@@ -655,23 +669,18 @@ class PrecisionMap(EPMap):
             sites : list of PrecisionLesion
 
         Returns:
-            list of AblationSites
+            Lesions
         """
 
         lesions = []
         for site in sites:
-            # Precision lesions only have color information, convert to
-            # numeric value as RFI
-            rfi_value = (site.color[0]
-                         + site.color[1] * 256
-                         + site.color[2] * 256**2
-                         )
-            rfi = RFIndex(name='precision', value=rfi_value)
-            lesions.append(AblationSite(X=site.X,
-                                        diameter=site.diameter,
-                                        RFIndex=[rfi]
-                                        )
-                           )
+            rfi = [
+                RFIndex(name='FTI', value=site.FTI),
+                RFIndex(name='LSI', value=site.LSI)
+            ]
+            lesions.append(
+                AblationSite(X=site.X, diameter=site.diameter, RFIndex=rfi)
+            )
 
         return Lesions(lesions)
 
@@ -1458,7 +1467,7 @@ class PrecisionStudy(EPStudy):
                 )
 
         for surfaceFile in file_matches:
-            with open(path.join(surfaceFile)) as fid:
+            with path.open(path.join(surfaceFile)) as fid:
                 tree = ET.parse(fid, parser=ET.XMLParser(
                     target=CommentedTreeBuilder()))
                 root = tree.getroot()
