@@ -622,7 +622,7 @@ class Repository:
         path = path + '/' if path and not ext else path
 
         try:
-            return self.root.joinpath(path)
+            return self.root.joinpath(path.replace('\\', '/'))
         except FileNotFoundError:
             return self.root
 
