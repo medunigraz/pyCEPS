@@ -488,7 +488,22 @@ class Repository:
         """
         study_root = self.root
         if isinstance(self.root, zipfile.Path):
-            study_root = os.path.abspath(self.root.root.filename)
+            if self.root.is_dir():
+                study_root = os.path.abspath(
+                    os.path.join(
+                        self.root.root.filename,
+                        self.root.at
+                    )
+                )
+            elif self.root.is_file():
+                study_root = os.path.abspath(
+                    os.path.dirname(
+                        os.path.join(
+                            self.root.root.filename,
+                            self.root.at
+                        )
+                    )
+                )
         if isinstance(self.root, py7zr.SevenZipFile):
             study_root = os.path.abspath(self.root.filename)
 
@@ -607,7 +622,7 @@ class Repository:
         path = path + '/' if path and not ext else path
 
         try:
-            return self.root.joinpath(path)
+            return self.root.joinpath(path.replace('\\', '/'))
         except FileNotFoundError:
             return self.root
 
