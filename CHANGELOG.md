@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.3] - 2025-11-25
+
+### Hotfix
+
+- fixed wrong channel data in IGB files (Robert Arnold)
+
 ## [1.1.2] - 2025-05-20
 
 ### Added
@@ -222,6 +228,7 @@ _This release was yanked on PyPi due to a missing file._
 
 _Initial release._
 
+[1.1.3]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.3
 [1.1.2]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.2
 [1.1.1]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.1
 [1.1.0]: https://github.com/medunigraz/pyCEPS/releases/tag/1.1.0
