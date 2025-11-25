@@ -41,6 +41,7 @@ from pyceps.interpolation import (inverse_distance_weighting,
                                   )
 from pyceps.datatypes.signals import Trace
 from pyceps.visualize import get_dash_app
+from pyceps.utils import console_progressbar
 
 
 TEPStudy = TypeVar('TEPStudy', bound='EPStudy')  # workaround to type hint self
@@ -916,27 +917,24 @@ class EPMap:
         output_folder = self.resolve_export_folder(output_folder)
         basename = os.path.join(output_folder, self.name)
 
-        # prepare data
-        data = np.full((len(points), 2500, len(which)),
-                       np.nan,
-                       dtype=np.float32)
-
-        # append point ECG data
-        for i, point in enumerate(points):
-            point_data = np.array(
-                [t.data for t in point.ecg for chn in which if t.name == chn]
-            )
-            data[i, :, :] = point_data.T
-
-        # save data channel-wise
         writer = FileWriter()
-        for i, channel in enumerate(which):
-            channel_data = data[:, :, i]
+        for n, chn in enumerate(which):
+            # prepare data
+            data = np.full((len(points), 2500),
+                           np.nan,
+                           dtype=np.float32)
+
+            for i, point in enumerate(points):
+                point_data = np.array(
+                    [t.data for t in point.ecg if (t.name == chn)]
+                )
+                data[i, :] = point_data
+
             # save data to igb
             # Note: this file cannot be loaded with the CARTO mesh but rather
             #       with the exported mapped nodes
-            header = {'x': channel_data.shape[0],
-                      't': channel_data.shape[1],
+            header = {'x': data.shape[0],
+                      't': data.shape[1],
                       'unites_t': 'ms',
                       'unites': 'mV',
                       'dim_t': data.shape[1] - 1,
@@ -944,9 +942,14 @@ class EPMap:
                       'inc_t': 1
                       }
 
-            filename = '{}.ecg.{}.pc.igb'.format(basename, channel)
-            f = writer.dump(filename, header, channel_data)
-            log.info('exported ecg trace {} to {}'.format(channel, f))
+            filename = '{}.ecg.{}.pc.igb'.format(basename, chn)
+            f = writer.dump(filename, header, data)
+
+            # update progress bar
+            console_progressbar(
+                n + 1, len(which),
+                suffix='exported ecg trace {} to {}'.format(chn, f)
+            )
 
         return
 
