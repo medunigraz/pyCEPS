@@ -218,5 +218,5 @@ GNU General Public License v3.0 (GPLv3+).
 
 ## Whom Do I Talk To?
 
-* [R. Arnold](mailto:robert.arnold@medunigraz.at?subject=pyceps)
-* A. Prassl
+If you need help or you want to contribute please contact us!
+* [Developers](mailto:pyceps@medunigraz.at?subject=pyCEPS%20Support%20Request)
