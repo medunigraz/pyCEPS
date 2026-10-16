@@ -7,7 +7,7 @@
 pyCEPS provides an interface to import, visualize and translate clinical
 mapping data (EAM data).
 Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster) and
-EnSite Precision<sup>&trade;</sup> (Abbot).
+EnSite Precision<sup>&trade;</sup> (Abbott).
 
 <img src="https://github.com/medunigraz/pyCEPS/blob/main/pyCEPS.png?raw=true" width="300" height="300">
 
@@ -35,7 +35,7 @@ If you use this software, please consider citing:
   year         = 2024,
   publisher    = {Zenodo},
   doi          = {10.5281/zenodo.10606340},
-  url          = {https://doi.org/10.5281/zenodo.10606340}
+  url          = {https://doi.org/10.5281/zenodo.10606340 }
 }
 
 To cite a specific software version, visit [Zenodo](https://zenodo.org/doi/10.5281/zenodo.10606340)
