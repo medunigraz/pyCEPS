@@ -1,6 +1,6 @@
 # pyCEPS
 
-[![DOI](https://zenodo.org/badge/747193272.svg)](https://zenodo.org/doi/10.5281/zenodo.10606340)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17711781.svg)](https://doi.org/10.5281/zenodo.17711781)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![PyPi Version](https://img.shields.io/pypi/v/pyCEPS.svg)](https://pypi.org/project/pyCEPS/)
 
@@ -9,34 +9,34 @@ mapping data (EAM data).
 Supported mapping systems are: CARTO<sup>&reg;</sup>3 (Biosense Webster) and
 EnSite Precision<sup>&trade;</sup> (Abbott).
 
-<img src="https://github.com/medunigraz/pyCEPS/blob/main/pyCEPS.png?raw=true" width="300" height="300">
+<img src="https://github.com/medunigraz/pyCEPS/blob/main/pyCEPS.png?raw=true" alt="Image showing import, visualization and export blocks of the software" width="300" height="300">
 
 ## How To Cite
 
 If you use this software, please consider citing:
 > @article{Arnold_pyCEPS_A_cross-platform_2024,
-  author = {Arnold, Robert and Prassl, Anton J. and Neic, Aurel and Thaler, Franz and Augustin, Christoph M. and Gsell, Matthias A.F. and Gillette, Karli and Manninger, Martin and Scherr, Daniel and Plank, Gernot},
-  doi = {10.1016/j.cmpb.2024.108299},
-  journal = {Computer Methods and Programs in Biomedicine},
-  title = {{pyCEPS: A cross-platform electroanatomic mapping data to computational model conversion platform for the calibration of digital twin models of cardiac electrophysiology}},
-  volume = {254},
-  year = {2024}
-}
+> author = {Arnold, Robert and Prassl, Anton J. and Neic, Aurel and Thaler, Franz and Augustin, Christoph M. and Gsell, Matthias A.F. and Gillette, Karli and Manninger, Martin and Scherr, Daniel and Plank, Gernot},
+> doi = {10.1016/j.cmpb.2024.108299},
+> journal = {Computer Methods and Programs in Biomedicine},
+> title = {{pyCEPS: A cross-platform electroanatomic mapping data to computational model conversion platform for the calibration of digital twin models of cardiac electrophysiology}},
+> volume = {254},
+> year = {2024}
+> }
 
 > @software{arnold_2024_10606341,
-  author       = {Arnold, Robert and
-                  Prassl, Anton J and
-                  Plank, Gernot},
-  title        = {{pyCEPS: A cross-platform Electroanatomic Mapping 
-                   Data to Computational Model Conversion Platform
-                   for the Calibration of Digital Twin Models of
-                   Cardiac Electrophysiology}},
-  month        = feb,
-  year         = 2024,
-  publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.10606340},
-  url          = {https://doi.org/10.5281/zenodo.10606340 }
-}
+> author       = {Arnold, Robert and
+> Prassl, Anton J and
+> Plank, Gernot},
+> title        = {{pyCEPS: A cross-platform Electroanatomic Mapping 
+> Data to Computational Model Conversion Platform
+> for the Calibration of Digital Twin Models of
+> Cardiac Electrophysiology}},
+> month        = feb,
+> year         = 2024,
+> publisher    = {Zenodo},
+> doi          = {10.5281/zenodo.10606340},
+> url          = {https://doi.org/10.5281/zenodo.10606340 }
+> }
 
 To cite a specific software version, visit [Zenodo](https://zenodo.org/doi/10.5281/zenodo.10606340)
 
@@ -218,5 +218,5 @@ GNU General Public License v3.0 (GPLv3+).
 
 ## Whom Do I Talk To?
 
-If you need help or you want to contribute please contact us!
+If you need help, or you want to contribute please contact us!
 * [Developers](mailto:pyceps@medunigraz.at?subject=pyCEPS%20Support%20Request)
